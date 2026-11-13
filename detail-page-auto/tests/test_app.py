@@ -101,7 +101,7 @@ def test_edit_restart_recheck_approve_and_zip(monkeypatch,tmp_path):
         assert all('.DRAFT.' in p['file'] for p in manifest['pages'])
     stage(restarted,5)
     assert restarted.button(key='accept').disabled
-    for i in range(4): restarted.checkbox(key=f'check_{job.name}_{i}').check()
+    for i in range(5): restarted.checkbox(key=f'check_{job.name}_{i}').check()
     restarted.run()
     assert not restarted.button(key='accept').disabled
     restarted.button(key='accept').click().run(timeout=60)
@@ -189,3 +189,66 @@ def test_claim_evidence_is_saved_from_existing_row(monkeypatch,tmp_path):
     fact=json.loads((job/'facts.json').read_text())['facts'][0]
     assert fact['kind']=='claim'
     assert fact['evidence']=='판매자가 제공한 테스트 근거 문서'
+
+
+def test_evidence_and_item_delete_clear_review(monkeypatch,tmp_path):
+    from core.workflow import create_job,ingest_job
+    from core.facts import ProductFacts
+    from core.ingest import extract_json
+    monkeypatch.setenv('DETAIL_PAGE_OUTPUTS',str(tmp_path))
+    facts=ProductFacts.model_validate_json((ROOT/'samples/facts.json').read_text())
+    job=create_job(facts,ROOT/'samples',tmp_path)
+    data=extract_json((ROOT/'samples/answer.txt').read_text())
+    data['hero']['fact_ids']=['missing']
+    data['features'].append({'title':'100% 효과','desc':'삭제할 문구','fact_ids':[]})
+    ingest_job(job,json.dumps(data,ensure_ascii=False))
+    app=AppTest.from_file(str(ROOT/'app/main.py'),default_timeout=60).run()
+    app.selectbox(key='resume_job').set_value(str(job));app.button(key='resume').click().run()
+    assert app.warning
+    selected=next(m for m in app.multiselect if 'hero 근거 사실' in m.label)
+    assert all('missing' not in o for o in selected.options)
+    selected.set_value(['design'])
+    app.button(key='remove_features-1_1').click().run()
+    assert not app.exception
+    assert not json.loads((job/'review.json').read_text())
+    assert json.loads((job/'manifest.json').read_text())['needs_review'] is False
+    assert len(next(s for s in json.loads((job/'draft.json').read_text())['sections'] if s['type']=='features')['items'])==1
+
+
+def test_background_preview_and_five_checks(monkeypatch,tmp_path):
+    import core.background
+    import core.images
+    from PIL import Image,ImageDraw
+    class Fake:
+        cache_key='apptest-fake'
+        def remove(self,image):
+            result=image.convert('RGBA');alpha=Image.new('L',image.size,0)
+            ImageDraw.Draw(alpha).rectangle((image.width//4,image.height//4,image.width*3//4,image.height*3//4),fill=255)
+            result.putalpha(alpha);return result
+    monkeypatch.setattr(core.background,'available',lambda:True)
+    monkeypatch.setattr(core.images,'get_remover',lambda:Fake())
+    app=start(monkeypatch,tmp_path)
+    next(c for c in app.checkbox if '배경 제거' in c.label).check().run()
+    app.button(key='photo_preview').click().run(timeout=60)
+    assert not app.exception and not app.error
+    preview=Path(app.session_state['photo_preview_job'])
+    meta=json.loads((preview/'manifest.json').read_text())
+    assert meta['image_processing'][0]['background_removed']
+    captions=[img.caption for node in app.get('image') for img in node.proto.imgs]
+    assert any('처리 전' in caption for caption in captions)
+    assert any('처리 후' in caption for caption in captions)
+    assert any('체크무늬' in caption for caption in captions)
+    app.button(key='create').click().run()
+    stage(app,2);app.text_area(key='answer_text').set_value((ROOT/'samples/answer.txt').read_text());app.button(key='ingest').click().run()
+    stage(app,5)
+    assert len([c for c in app.checkbox if c.key.startswith('check_')])==5
+    assert app.button(key='accept').disabled
+
+
+def test_missing_background_option_disabled(monkeypatch,tmp_path):
+    import core.background
+    monkeypatch.setattr(core.background,'available',lambda:False)
+    app=start(monkeypatch,tmp_path)
+    assert next(c for c in app.checkbox if '배경 제거' in c.label).disabled
+    app.button(key='create').click().run()
+    assert app.session_state['stage']=='② 프롬프트'

@@ -34,6 +34,10 @@ def main(argv=None):
         else:
             parser=argparse.ArgumentParser(description='M2: 상품 사실 → 붙여넣기 프롬프트 → 문구 검증. M1: --input ...')
             sub=parser.add_subparsers(dest='command',required=True)
+            images=sub.add_parser('images',help='사진 처리만 실행 (AI 호출 없음)')
+            images.add_argument('--facts',type=Path,required=True)
+            images.add_argument('--images',type=Path,required=True)
+            images.add_argument('--output',type=Path,required=True)
             accept=sub.add_parser('accept',help='현재 draft.json을 승인해 새 작업으로 렌더링 (AI 호출 없음)')
             accept.add_argument('--job',type=Path,required=True)
             prompt=sub.add_parser('prompt')
@@ -69,7 +73,14 @@ def main(argv=None):
                 terms=json.loads(args.review_terms.read_text(encoding='utf-8'))
                 if not isinstance(terms,list) or not all(isinstance(t,str) and t for t in terms):
                     raise ValueError('review-terms must be a JSON array of nonempty strings')
-            if args.command=='accept':
+            if args.command=='images':
+                result=create_job(read_facts(args.facts),args.images,args.output,method='images')
+                meta=json.loads((result/'manifest.json').read_text())
+                for warning in meta.get('image_reviews',[]): print('WARNING: '+warning['reason'],file=sys.stderr)
+                if any(item.get('settings',{}).get('remove_background') and not item.get('background_removed') for item in meta['image_processing']):
+                    print(result.resolve())
+                    raise ValueError('배경 제거 실패: 기본 처리본은 출력 작업 폴더에 유지했습니다.')
+            elif args.command=='accept':
                 result=accept_job(args.job)
             elif args.command=='prompt':
                 if args.from_job:

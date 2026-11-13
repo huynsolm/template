@@ -1,100 +1,16 @@
-"""Actual local Streamlit + Chromium flow, never automating external AI sites."""
-import io
-import json
-import os
+"""Browser tests write only into tmp_path, never into tracked documentation."""
+import hashlib
 from pathlib import Path
-import socket
-import subprocess
 import sys
-import time
-import urllib.request
-import zipfile
-
-from playwright.sync_api import sync_playwright, expect
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from core.ingest import extract_json
-from core.render import chromium_path
+from tools.make_screenshots import make_screenshots
 
 
 def test_browser_local_flow_and_artifacts(tmp_path):
-    with socket.socket() as listener:
-        listener.bind(('127.0.0.1',0)); port=listener.getsockname()[1]
-    environment=os.environ.copy()
-    environment['DETAIL_PAGE_OUTPUTS']=str(tmp_path/'jobs')
-    artifacts=ROOT/'outputs/m4-browser'; artifacts.mkdir(parents=True,exist_ok=True)
-    images=ROOT/'docs/images'; images.mkdir(parents=True,exist_ok=True)
-    with (tmp_path/'server.log').open('w') as log:
-        process=subprocess.Popen([sys.executable,'-m','streamlit','run','app/main.py','--server.address','127.0.0.1','--server.port',str(port),'--browser.gatherUsageStats','false'],cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,shell=False)
-        try:
-            deadline=time.monotonic()+30
-            while True:
-                try:
-                    with urllib.request.urlopen(f'http://127.0.0.1:{port}/_stcore/health',timeout=1) as response:
-                        assert response.status==200
-                    break
-                except OSError:
-                    assert process.poll() is None,'Streamlit exited unexpectedly'
-                    if time.monotonic()>deadline: raise AssertionError('Streamlit startup timed out')
-                    time.sleep(.1)
-            with sync_playwright() as pw:
-                expect.set_options(timeout=60000)
-                browser=pw.chromium.launch(executable_path=chromium_path(pw.chromium.executable_path))
-                try:
-                    page=browser.new_page(viewport={'width':1440,'height':1100},accept_downloads=True)
-                    page.set_default_timeout(60000)
-                    page.goto(f'http://127.0.0.1:{port}')
-                    expect(page.get_by_role('heading',name='상품 상세페이지 만들기',exact=True)).to_be_visible()
-                    page.get_by_role('button',name='샘플 데이터 넣기',exact=True).click()
-                    expect(page.get_by_role('textbox',name='상품명',exact=True)).to_have_value('가상 샘플 보틀')
-                    page.locator('input[type=file]').nth(1).set_input_files(ROOT/'samples/product.png')
-                    expect(page.get_by_text('사진 1 역할',exact=True)).to_be_visible()
-                    page.screenshot(path=str(images/'01-input.png'),full_page=True)
-                    page.get_by_role('button',name='저장하고 프롬프트 만들기',exact=True).click()
-                    expect(page.get_by_role('heading',name='② 프롬프트 복사',exact=True)).to_be_visible()
-                    page.screenshot(path=str(images/'02-prompt.png'),full_page=True)
-                    page.get_by_role('button',name='답변 붙여넣기로 이동',exact=True).click()
-                    answer=extract_json((ROOT/'samples/answer.txt').read_text())
-                    answer['hero']['fact_ids']=['unknown-fact']
-                    page.get_by_role('textbox',name='답변 전체',exact=True).fill(json.dumps(answer,ensure_ascii=False))
-                    page.get_by_role('button',name='답변 검증·조립',exact=True).click()
-                    expect(page.get_by_role('heading',name='④ 검수·문구 수정',exact=True)).to_be_visible()
-                    expect(page.get_by_text('검수: 존재하지 않는 fact_ids: unknown-fact · hero',exact=True)).to_be_visible()
-                    page.screenshot(path=str(images/'03-review.png'),full_page=True)
-                    headline=page.get_by_role('textbox',name='대표 문구 · headline (상한 80자)',exact=True)
-                    headline.fill('사람이 검수한 샘플 보틀')
-                    page.get_by_role('button',name='수정 저장·재검수',exact=True).click()
-                    expect(page.get_by_text('수정과 검수 목록을 저장했습니다.',exact=True)).to_be_visible()
-                    page.get_by_role('button',name='저장한 문구 미리보기',exact=True).click()
-                    page.get_by_role('button',name='저장된 문구로 미리보기 생성',exact=True).click()
-                    expect(page.get_by_text('DRAFT · 승인 전 미리보기입니다. 검수 항목과 문구를 확인하세요.',exact=True)).to_be_visible()
-                    page.screenshot(path=str(images/'04-preview.png'),full_page=True)
-                    page.get_by_role('button',name='승인 단계로 이동',exact=True).click()
-                    approve=page.get_by_role('button',name='모두 확인했으며 승인',exact=True)
-                    expect(approve).to_be_disabled()
-                    for label in ['사실 일치 확인','후기 출처·허가 확인','효능·수치·광고 표현 확인','대상 플랫폼 업로드 규격은 별도 확인 필요함을 인지']:
-                        page.get_by_text(label,exact=True).click()
-                        expect(page.get_by_role('checkbox',name=label,exact=True)).to_be_checked()
-                    expect(approve).to_be_enabled()
-                    approve.click()
-                    expect(page.get_by_role('heading',name='⑦ 다운로드',exact=True)).to_be_visible()
-                    download=page.get_by_role('button',name='ZIP 다운로드',exact=True)
-                    expect(download).to_be_visible()
-                    page.screenshot(path=str(images/'05-download.png'),full_page=True)
-                    with page.expect_download() as waiting:
-                        download.click()
-                    result=waiting.value
-                    target=artifacts/'approved.zip'; result.save_as(target)
-                    with zipfile.ZipFile(target) as archive:
-                        manifest=json.loads(archive.read('manifest.json'))
-                        assert manifest['review_accepted'] is True
-                        expect(page.get_by_text('작업 버전 ID: '+manifest['job_id'],exact=True)).to_be_visible()
-                        assert all('.DRAFT.' not in part['file'] for part in manifest['pages'])
-                        assert '사람이 검수한 샘플 보틀' in archive.read('draft.json').decode()
-                    (artifacts/'browser-result.json').write_text(json.dumps({'job_id':manifest['job_id'],'same_version':True,'bound_address':'127.0.0.1','steps':'1-7','zip':'approved.zip'},ensure_ascii=False,indent=2))
-                finally:
-                    browser.close()
-        finally:
-            process.terminate()
-            try: process.wait(timeout=10)
-            except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=10)
+    before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/'docs/images').glob('*.png')}
+    result=make_screenshots(tmp_path/'work',tmp_path/'screenshots',tmp_path/'artifacts')
+    assert result['same_version'] and result['steps']=='1-7'
+    assert (tmp_path/'artifacts/approved.zip').is_file()
+    assert len(list((tmp_path/'screenshots').glob('*.png')))==5
+    assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/'docs/images').glob('*.png')}

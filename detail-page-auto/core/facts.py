@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from .schema import Model, Product, ReviewItem, Text, Body, Document
 from .collect import collect_images
+from .images import Processing
 
 class Fact(Model):
     id: Text
@@ -21,6 +22,12 @@ class ImageRef(Model):
     path: Text
     role: Literal['hero','feature','solution','other']
     alt: Text | None = None
+    processing: Processing = Field(default_factory=Processing)
+    derived_path: Text | None = None
+
+    @property
+    def effective_path(self) -> str:
+        return self.derived_path or self.path
 
 class ProductFacts(Model):
     schema_version: Literal['1.0']

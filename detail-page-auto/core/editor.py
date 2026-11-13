@@ -1,4 +1,5 @@
 """Shared manual editing, read-only review and versioned export operations."""
+import copy
 import hashlib
 import io
 import json
@@ -48,18 +49,99 @@ def _seller_check(job, document):
     return facts
 
 
-def reassess_draft(job: Path, document: Document | None = None) -> list[dict]:
-    """Inspect current text with original evidence references, without writing files."""
+def _copy_units(document):
+    """Yield section, review path, text for each editable evidence unit."""
+    for section in document.sections:
+        kind=section.type
+        if kind=='hero':
+            yield section,'hero',' '.join(filter(None,[section.headline,section.subcopy]))
+        elif kind=='solution':
+            yield section,'solution',section.title+' '+section.body
+        elif kind=='pain':
+            yield section,'pain.title',section.title
+            for n,item in enumerate(section.items):
+                yield section,f'pain.items.{n}.text',item
+        elif kind in ('features','how_to','faq'):
+            for n,item in enumerate(section.steps if kind=='how_to' else section.items):
+                text=' '.join(v for k,v in item.model_dump().items() if isinstance(v,str) and k!='image')
+                yield section,f'{kind}.{n}',text
+
+
+def _edited_evidence(job):
+    path=Path(job)/'edited-evidence.json'
+    return read_json(path) if path.exists() else {}
+
+
+def evidence_units(job: Path, document_data=None) -> list[dict]:
+    """Current evidence selections; canonical keys also disambiguate repeated types."""
+    job=Path(job)
+    document=Document.model_validate(document_data if document_data is not None else read_json(job/'draft.json'))
+    original=read_json(provenance_path(job,'copy.json'))
+    preserved=read_json(job/'locked-evidence.json') if (job/'locked-evidence.json').exists() else {}
+    edited=_edited_evidence(job)
+    result=[]
+    for section,path,_ in _copy_units(document):
+        kind=section.type
+        origin=preserved.get(section.id,original.get(kind,{}) if section.id==kind+'-1' else {})
+        if path.startswith('pain.items.'):
+            refs=origin.get('items',[]) if isinstance(origin,dict) else []
+            n=int(path.split('.')[2]); unit=refs[n] if n<len(refs) else {}
+        elif kind in ('features','how_to','faq'):
+            n=int(path.split('.')[1]); unit=origin[n] if isinstance(origin,list) and n<len(origin) else {}
+        else:
+            unit=origin
+        ids=unit.get('fact_ids',[]) if isinstance(unit,dict) else []
+        ids=edited.get(section.id,{}).get(path,ids)
+        result.append({'section_id':section.id,'path':path,'fact_ids':list(ids),'key':section.id+':'+path})
+    return result
+
+
+def change_copy_items(data: dict, section_id: str, action: str, index=None, evidence=None) -> dict:
+    """Mutate a copy, validate M1 bounds, and remap all supplied evidence in core."""
+    updated=Document.model_validate(data).model_dump(exclude_none=True)
+    section=next((s for s in updated['sections'] if s['id']==section_id),None)
+    if section is None or section['type'] not in ('pain','features','how_to','faq'):
+        raise ValueError('only pain/features/how_to/faq items can be changed')
+    kind=section['type']; items=section['steps' if kind=='how_to' else 'items']
+    old_indices=list(range(len(items)))
+    if action=='add':
+        if index is not None: raise ValueError('add appends an item; index must be omitted')
+        new='새 문구' if kind=='pain' else ({'q':'새 질문','a':'새 답변'} if kind=='faq' else {'title':'새 제목','desc':'새 설명'})
+        items.append(new); old_indices.append(None)
+    elif action=='remove':
+        if type(index) is not int or index<0 or index>=len(items): raise ValueError('invalid item index')
+        items.pop(index); old_indices.pop(index)
+    else:
+        raise ValueError('action must be add or remove')
+    normalized=Document.model_validate(updated).model_dump(exclude_none=True)
+    def path(n):
+        return f'pain.items.{n}.text' if kind=='pain' else f'{kind}.{n}'
+    mapping={path(n):path(old) if old is not None else None for n,old in enumerate(old_indices)}
+    if kind=='pain': mapping['pain.title']='pain.title'
+    remapped=copy.deepcopy(evidence) if evidence is not None else {}
+    if not isinstance(remapped,dict): raise ValueError('evidence must be an object')
+    prefix=section_id+':'
+    source=copy.deepcopy(remapped)
+    for key in list(remapped):
+        if key.startswith(prefix): del remapped[key]
+    for new_path,old_path in mapping.items():
+        remapped[prefix+new_path]=list(source.get(prefix+old_path,[])) if old_path is not None else []
+    return {'data':normalized,'path_map':mapping,'evidence':remapped}
+
+
+def reassess_draft(job: Path, document: Document | None = None, evidence=None) -> list[dict]:
+    """Inspect current text using immutable origins and persisted manual selections."""
     job=Path(job)
     document=document or Document.model_validate(read_json(job/'draft.json'))
     facts=_seller_check(job,document)
-    original=read_json(provenance_path(job,'copy.json'))
-    preserved=read_json(job/'locked-evidence.json') if (job/'locked-evidence.json').exists() else {}
     terms=read_json(job/'manifest.json').get('review_terms',DEFAULT_TERMS)
     fact_map={f.id:f for f in facts.facts}
+    units={u['key']:u['fact_ids'] for u in evidence_units(job,document.model_dump(exclude_none=True))}
+    if evidence is not None:
+        units.update({sid+':'+path:ids for sid,paths in evidence.items() for path,ids in paths.items()})
     review=[]
-    def check(section, path, text, unit):
-        ids=unit.get('fact_ids',[]) if isinstance(unit,dict) else []
+    for section,path,text in _copy_units(document):
+        ids=units[section.id+':'+path]
         def flag(reason):
             review.append({'section_id':section.id,'field_path':path,'reason':reason,'fact_ids':list(ids)})
         missing=[i for i in ids if i not in fact_map]
@@ -67,40 +149,56 @@ def reassess_draft(job: Path, document: Document | None = None) -> list[dict]:
         if not ids: flag('근거 fact_ids가 비어 있음')
         if (re.search(r'\d|[%％]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
             flag('수치·인증·효능 표현에 claim/spec 근거 확인 필요')
-    for section in document.sections:
-        kind=section.type
-        # An added section has no known original evidence, even of the same type.
-        origin=preserved.get(section.id,original.get(kind,{}) if section.id==kind+'-1' else {})
-        if kind=='hero': check(section,'hero',' '.join(filter(None,[section.headline,section.subcopy])),origin)
-        elif kind=='solution': check(section,'solution',section.title+' '+section.body,origin)
-        elif kind=='pain':
-            check(section,'pain.title',section.title,origin)
-            refs=origin.get('items',[]) if isinstance(origin,dict) else []
-            for n,item in enumerate(section.items): check(section,f'pain.items.{n}.text',item,refs[n] if n<len(refs) else {})
-        elif kind in ('features','how_to','faq'):
-            units=section.steps if kind=='how_to' else section.items
-            refs=origin if isinstance(origin,list) else []
-            for n,item in enumerate(units):
-                text=' '.join(v for k,v in item.model_dump().items() if isinstance(v,str) and k!='image')
-                check(section,f'{kind}.{n}',text,refs[n] if n<len(refs) else {})
-    return review
+    return review+read_json(job/'manifest.json').get('image_reviews',[])
 
 
-def save_draft(job: Path, data: dict, locked_sections: list[str]) -> None:
+def save_draft(job: Path, data: dict, locked_sections: list[str], evidence=None) -> None:
     job=Path(job)
     document=Document.model_validate(data)
+    facts=_seller_check(job,document)
     if not isinstance(locked_sections,list) or any(not isinstance(s,str) for s in locked_sections):
         raise ValueError('locked_sections must be a list of section IDs')
     if len(set(locked_sections))!=len(locked_sections) or set(locked_sections)-{s.id for s in document.sections}:
         raise ValueError('unknown or duplicate locked section IDs')
-    review=reassess_draft(job,document)
+    previous=read_json(job/'draft.json')
+    previous_evidence=_edited_evidence(job)
+    units=evidence_units(job,data)
+    valid={u['key']:u for u in units}
+    selected={sid:{path:list(ids) for path,ids in paths.items() if sid+':'+path in valid} for sid,paths in previous_evidence.items()}
+    # A list length change without explicit remapping must never attach the old
+    # position's evidence to a shifted item. Keep only the unchanged prefix.
+    old_sections={s['id']:s for s in previous['sections']}
+    for section in document.model_dump(exclude_none=True)['sections']:
+        kind=section['type']
+        if kind not in ('pain','features','how_to','faq'): continue
+        field='steps' if kind=='how_to' else 'items'
+        old=old_sections.get(section['id'],{}).get(field,[]); new=section[field]
+        if len(old)==len(new): continue
+        prefix=0
+        while prefix<min(len(old),len(new)) and old[prefix]==new[prefix]: prefix+=1
+        for n in range(prefix,len(new)):
+            path=f'pain.items.{n}.text' if kind=='pain' else f'{kind}.{n}'
+            selected.setdefault(section['id'],{})[path]=[]
+    if evidence is not None:
+        if not isinstance(evidence,dict): raise ValueError('evidence must be an object')
+        fact_ids={f.id for f in facts.facts}
+        for key,ids in evidence.items():
+            candidates=[u for u in units if key in (u['key'],u['path'])]
+            if len(candidates)!=1: raise ValueError('unknown or ambiguous evidence path: '+str(key))
+            if not isinstance(ids,list) or any(not isinstance(i,str) or i not in fact_ids for i in ids) or len(set(ids))!=len(ids):
+                raise ValueError('fact_ids must be unique existing fact IDs')
+            unit=candidates[0]
+            selected.setdefault(unit['section_id'],{})[unit['path']]=list(ids)
+    selected={sid:paths for sid,paths in selected.items() if paths}
+    review=reassess_draft(job,document,evidence=selected)
     from .collect import collect_images
     collect_images(document,job)
     history=read_json(job/'history.json') if (job/'history.json').exists() else []
     normalized=document.model_dump(exclude_none=True)
-    history.append({'saved_at':now(),'previous_draft':read_json(job/'draft.json'),'draft':normalized,'locked_sections':locked_sections,'review':review})
+    history.append({'saved_at':now(),'previous_draft':previous,'draft':normalized,'locked_sections':locked_sections,'review':review,'previous_evidence':previous_evidence,'evidence':selected})
     write_json(job/'history.json',history)
     write_json(job/'draft.json',normalized)
+    write_json(job/'edited-evidence.json',selected)
     write_json(job/'edits.json',{'locked_sections':locked_sections})
     write_json(job/'review.json',review)
     manifest=read_json(job/'manifest.json')

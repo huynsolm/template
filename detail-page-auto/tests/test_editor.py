@@ -189,3 +189,80 @@ def test_custom_review_terms_survive_edit_regenerate_and_accept(job):
     accepted=accept_job(child)
     assert any(i['section_id']=='hero-1' for i in reassess_draft(accepted))
     assert read_json(accepted/'manifest.json')['review_terms']==['매일']
+
+
+def test_evidence_edits_resolve_warnings_and_keep_original_and_history(job):
+    from core.editor import save_draft, evidence_units, reassess_draft, change_copy_items
+    original=(job/'copy.json').read_bytes()
+    data=read_json(job/'draft.json')
+    data['sections'][0]['headline']='100% 인증 효과'
+    changed=change_copy_items(data,'features-1','add')
+    data=changed['data']
+    save_draft(job,data,[])
+    assert read_json(job/'manifest.json')['needs_review'] is True
+    assert any(u['path']=='features.1' and u['fact_ids']==[] for u in evidence_units(job))
+    changed=change_copy_items(data,'features-1','remove',1)
+    save_draft(job,changed['data'],[],evidence={'hero':['spec-demo']})
+    assert reassess_draft(job)==[]
+    assert read_json(job/'manifest.json')['needs_review'] is False
+    assert (job/'copy.json').read_bytes()==original
+    assert read_json(job/'edited-evidence.json')['hero-1']['hero']==['spec-demo']
+    history=read_json(job/'history.json')[-1]
+    assert history['evidence']['hero-1']['hero']==['spec-demo']
+    assert history['previous_evidence'].get('hero-1',{}).get('hero') is None
+
+
+@pytest.mark.parametrize('evidence',[{'hero':['missing']},{'hero':'design'},{'hero':['design','design']},{'missing':['design']}])
+def test_invalid_evidence_is_rejected_atomically(job,evidence):
+    from core.editor import save_draft
+    before={p.name:p.read_bytes() for p in job.iterdir() if p.is_file()}
+    with pytest.raises(ValueError):
+        save_draft(job,read_json(job/'draft.json'),[],evidence=evidence)
+    assert {p.name:p.read_bytes() for p in job.iterdir() if p.is_file()}==before
+
+
+@pytest.mark.parametrize('kind',['pain','features','how_to','faq'])
+def test_core_list_mutation_limits_and_remapping(job,kind):
+    from core.editor import change_copy_items
+    data=read_json(job/'draft.json'); before=copy.deepcopy(data)
+    sid=kind+'-1'; prefix='pain.items.' if kind=='pain' else kind+'.'
+    path=lambda n: prefix+str(n)+('.text' if kind=='pain' else '')
+    with pytest.raises(ValueError): change_copy_items(data,sid,'remove',0)
+    added=change_copy_items(data,sid,'add')
+    assert data==before
+    assert added['path_map'][path(0)]==path(0)
+    assert added['path_map'][path(1)] is None
+    removed=change_copy_items(added['data'],sid,'remove',0)
+    assert removed['path_map'][path(0)]==path(1)
+    current=data
+    for _ in range(9): current=change_copy_items(current,sid,'add')['data']
+    with pytest.raises(ValueError): change_copy_items(current,sid,'add')
+    with pytest.raises(ValueError): change_copy_items(data,sid,'remove',-1)
+    with pytest.raises(ValueError): change_copy_items(data,'hero-1','add')
+
+
+def test_deleting_item_does_not_inherit_evidence_of_old_position(job):
+    from core.editor import save_draft,evidence_units,change_copy_items
+    data=read_json(job/'draft.json')
+    data=change_copy_items(data,'features-1','add')['data']
+    next(s for s in data['sections'] if s['id']=='features-1')['items'][1]['title']='추가 문구'
+    save_draft(job,data,[],evidence={'features.0':['design'],'features.1':['usage']})
+    data=change_copy_items(data,'features-1','remove',0)['data']
+    save_draft(job,data,[])
+    refs=next(u for u in evidence_units(job) if u['path']=='features.0')
+    assert refs['fact_ids']==[]
+
+
+def test_list_mutation_remaps_evidence_in_core(job):
+    from core.editor import save_draft,evidence_units,change_copy_items
+    data=read_json(job/'draft.json')
+    refs={u['key']:u['fact_ids'] for u in evidence_units(job)}
+    added=change_copy_items(data,'features-1','add',evidence=refs)
+    assert added['evidence']['features-1:features.1']==[]
+    added['evidence']['features-1:features.1']=['usage']
+    removed=change_copy_items(added['data'],'features-1','remove',0,evidence=added['evidence'])
+    assert refs['features-1:features.0']==['design']
+    assert removed['evidence']['features-1:features.0']==['usage']
+    assert 'features-1:features.1' not in removed['evidence']
+    save_draft(job,removed['data'],[],evidence=removed['evidence'])
+    assert next(u for u in evidence_units(job) if u['key']=='features-1:features.0')['fact_ids']==['usage']

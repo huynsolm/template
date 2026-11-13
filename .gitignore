@@ -4,3 +4,8 @@ __pycache__/
 outputs/
 
 .browsers/
+
+# Local background models are downloaded on demand, never committed.
+*.onnx
+*.onnx.data
+.models/

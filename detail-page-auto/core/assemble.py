@@ -24,16 +24,16 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
         return sid
     hero=next((i for i in facts.images if i.role=='hero'),facts.images[0] if facts.images else None)
     if hero is None: raise ValueError('images: hero or first image required')
-    add('hero',headline=copy.hero.headline,subcopy=copy.hero.subcopy,image=hero.path)
+    add('hero',headline=copy.hero.headline,subcopy=copy.hero.subcopy,image=hero.effective_path)
     check(copy.hero,'hero-1','hero')
     add('pain',title=copy.pain.title,items=[i.text for i in copy.pain.items])
     check(copy.pain,'pain-1','pain.title')
     for n,i in enumerate(copy.pain.items): check(i,'pain-1',f'pain.items.{n}.text')
     solution={'title':copy.solution.title,'body':copy.solution.body}
     solution_image=next((i for i in facts.images if i.role=='solution'),None)
-    if solution_image: solution['image']=solution_image.path
+    if solution_image: solution['image']=solution_image.effective_path
     add('solution',**solution); check(copy.solution,'solution-1','solution')
-    feature_images=iter(i.path for i in facts.images if i.role=='feature')
+    feature_images=iter(i.effective_path for i in facts.images if i.role=='feature')
     features=[]
     for n,i in enumerate(copy.features):
         item={'title':i.title,'desc':i.desc}; image=next(feature_images,None)

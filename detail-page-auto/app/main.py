@@ -48,7 +48,7 @@ def schedule_open(path,index):
 def form_load(data=None,image_root=None):
     data=data or {'product':{'name':'','category':'','price':'','brand_color':'#305b46'},'facts':[{'id':'fact-1','text':'','kind':'feature'}],'images':[],'reviews':[]}
     for key in list(S):
-        if key.startswith(('fact_','review_','edit_','lock_','check_')): del S[key]
+        if key.startswith(('fact_','review_','edit_','lock_','check_','evidence_')): del S[key]
     for key,value in data['product'].items(): S['product_'+key]=value
     revision=uuid.uuid4().hex[:8]
     S['form_buffer']=copy.deepcopy(data)
@@ -57,6 +57,7 @@ def form_load(data=None,image_root=None):
     S['notice']=data.get('notice','')
     S['image_refs']=copy.deepcopy(data.get('images',[]))
     S['image_root']=str(image_root) if image_root else ''
+    S['photo_preview_job']=''
     S['field_errors']={}; S['upload_error']=''
 
 
@@ -169,6 +170,21 @@ def facts_data():
     return data
 
 
+def photo_previews():
+    source=S.get('photo_preview_job') or (S.get('job') if S.get('image_root')==S.get('job') else '')
+    if not source or not (Path(source)/'manifest.json').exists(): return
+    manifest=read_json(Path(source)/'manifest.json')
+    for i,record in enumerate(manifest.get('image_processing',[])):
+        cols=st.columns(2)
+        cols[0].image(str(Path(source)/record['source_path']),caption=f'사진 {i+1} 처리 전',width=220)
+        settings=S['image_refs'][i].get('processing',{}) if i<len(S['image_refs']) else {}
+        path=record['selected_path'] if settings.get('remove_background') else record['normalized_path']
+        cols[1].image(str(Path(source)/path),caption=f'사진 {i+1} 처리 후',width=220)
+        if settings.get('remove_background') and record.get('mask_preview_path'):
+            st.image(str(Path(source)/record['mask_preview_path']),caption='배경 제거 마스크 (체크무늬)',width=220)
+    for item in manifest.get('image_reviews',[]): st.warning(item['reason'])
+
+
 def input_page():
     for key,value in S.get('form_buffer',{}).get('product',{}).items():
         if 'product_'+key not in S: S['product_'+key]=value
@@ -206,12 +222,28 @@ def input_page():
     st.file_uploader('상품 사진 (PNG/JPEG, 최대 5장, 장당 10MB)',type=['png','jpg','jpeg'],accept_multiple_files=True,key='photos',on_change=uploaded)
     if S.get('upload_error'): st.error(S['upload_error'])
     field_error('images')
+    from core.background import available
+    bg_ready=available()
+    if not bg_ready: st.caption('배경 제거는 선택 설치입니다. requirements-bg.lock을 설치하면 활성화됩니다.')
     for i,ref in enumerate(S['image_refs']):
         path=Path(S['image_root'])/ref['path']
         if S['image_root'] and path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(Path(S['image_root']).resolve()): st.image(str(path),width=160)
         labels=list(ROLES); current=next(k for k,v in ROLES.items() if v==ref['role'])
         chosen=st.selectbox(f'사진 {i+1} 역할',labels,index=labels.index(current),key=f'image_role_{S["image_root"]}_{i}')
         ref['role']=ROLES[chosen]
+        from core.images import Processing
+        settings=Processing.model_validate(ref.get('processing',{})).model_dump()
+        settings['remove_background']=st.checkbox(f'사진 {i+1} 배경 제거 (선택)',value=bool(settings['remove_background'] and bg_ready),disabled=not bg_ready,key=f'bg_{S["image_root"]}_{i}') and bg_ready
+        ref['processing']=settings
+    if S['image_refs'] and st.button('사진 처리 미리보기',key='photo_preview',disabled=S.get('busy',False)):
+        def preview_photos():
+            facts=ProductFacts.model_validate(facts_data())
+            if not S['image_root']: raise ValueError('상품 사진을 업로드해 주세요.')
+            return create_job(facts,Path(S['image_root']),outputs(),method='image-preview')
+        ok,preview=perform('사진 처리',preview_photos)
+        if ok: S['photo_preview_job']=str(preview)
+        st.rerun()
+    photo_previews()
     st.subheader('실제 후기 (선택)')
     st.info('AI가 후기를 만들지 않으며 실제 허가받은 후기만 입력하세요.')
     for index,row in enumerate(S['review_rows']):
@@ -301,13 +333,36 @@ def nested(data,path,value=None,set_value=False):
     else: return node.get(last,'') if isinstance(node,dict) else node[last]
 
 
+def edit_key(job,sid,path):
+    suffix=S.get('editor_revision','')
+    return f'edit_{job.name}_{sid}_{path}'+('_'+suffix if suffix else '')
+
+
+def evidence_key(job,unit):
+    return f'evidence_{job.name}_{unit["key"]}_{S.get("editor_revision","")}'
+
+
+def editor_snapshot(job,document,units,choices):
+    result=copy.deepcopy(document)
+    for section in result['sections']:
+        for path,_ in editable_fields(section):
+            value=S.get(edit_key(job,section['id'],path),nested(section,path) or '')
+            if section['type']=='hero' and path=='subcopy' and not value: section.pop('subcopy',None)
+            else: nested(section,path,value,True)
+    refs={u['key']:S.get(evidence_key(job,u),[fid for fid in u['fact_ids'] if fid in choices]) for u in units}
+    return result,refs
+
+
 def edit_page(job):
-    from core.editor import save_draft
+    from core.editor import save_draft,evidence_units,change_copy_items
     st.header('④ 검수·문구 수정')
-    document=read_json(job/'draft.json'); edited=copy.deepcopy(document)
+    document=read_json(job/'draft.json')
     reviews=read_json(job/'review.json')
+    for item in reviews:
+        if item['section_id']=='images': st.warning('사진 검수: '+item['reason'])
     facts={f['id']:f['text'] for f in read_json(job/'facts.json')['facts']}
-    copy_data=read_json(job/'copy.json')
+    units=evidence_units(job,document)
+    edited,references=editor_snapshot(job,document,units,facts)
     locks=read_json(job/'edits.json').get('locked_sections',[]) if (job/'edits.json').exists() else []
     selected=[]
     st.info('가격·상품명·후기·스펙·안내 문구는 ① 상품 정보에서 수정하고 새 작업을 시작하세요.')
@@ -321,23 +376,34 @@ def edit_page(job):
             if not fields: st.json(section,expanded=False)
             for path,limit in fields:
                 initial=nested(section,path) or ''
-                value=st.text_area(f'{NAMES[kind]} · {path} (상한 {limit}자)',value=initial,key=f'edit_{job.name}_{sid}_{path}')
+                value=st.text_area(f'{NAMES[kind]} · {path} (상한 {limit}자)',value=initial,key=edit_key(job,sid,path))
                 st.caption(f'{len(value)} / {limit}자')
                 if kind=='hero' and path=='subcopy' and not value:
                     section.pop('subcopy',None)
                 else:
                     nested(section,path,value,True)
-            preserved=read_json(job/'locked-evidence.json') if (job/'locked-evidence.json').exists() else {}
-            grounded=preserved.get(sid,copy_data.get(kind,[]))
-            def collect_ids(data):
-                if isinstance(data,dict): return data.get('fact_ids',[])+[fid for key,val in data.items() if key!='fact_ids' for fid in collect_ids(val)]
-                if isinstance(data,list): return [fid for val in data for fid in collect_ids(val)]
-                return []
-            for fid in dict.fromkeys(collect_ids(grounded)):
-                st.caption('근거 '+fid+': '+facts.get(fid,'존재하지 않는 사실 ID'))
+            for unit in units:
+                if unit['section_id']==sid:
+                    references[unit['key']]=st.multiselect(f'{NAMES[kind]} · {unit["path"]} 근거 사실',options=list(facts),default=[fid for fid in unit['fact_ids'] if fid in facts],format_func=lambda fid:fid+': '+facts[fid],key=evidence_key(job,unit))
+            if kind in ('pain','features','how_to','faq'):
+                array='steps' if kind=='how_to' else 'items'
+                def mutate(action,item_index=None):
+                    snapshot,refs=editor_snapshot(job,document,units,facts)
+                    changed=change_copy_items(snapshot,sid,action,item_index,evidence=refs)
+                    locked=[part['id'] for part in document['sections'] if S.get(f'lock_{job.name}_{part["id"]}',part['id'] in locks)]
+                    save_draft(job,changed['data'],locked,evidence=changed['evidence'])
+                for number in range(len(section[array])):
+                    if st.button(f'{NAMES[kind]} 항목 {number+1} 삭제',key=f'remove_{sid}_{number}'):
+                        ok,_=perform('목록 항목 삭제 및 재검수',lambda n=number:mutate('remove',n))
+                        if ok: S['editor_revision']=uuid.uuid4().hex[:8];S['bundle']=''
+                        st.rerun()
+                if st.button(f'{NAMES[kind]} 항목 추가',key=f'add_{sid}'):
+                    ok,_=perform('목록 항목 추가',lambda:mutate('add'))
+                    if ok: S['editor_revision']=uuid.uuid4().hex[:8];S['bundle']=''
+                    st.rerun()
             if st.checkbox('잠금 (재생성 시 유지)',value=sid in locks,key=f'lock_{job.name}_{sid}'): selected.append(sid)
     if st.button('수정 저장·재검수',key='save_edits',type='primary',disabled=S.get('busy',False)):
-        ok,_=perform('수정 저장 및 근거 재검수',lambda:save_draft(job,edited,selected))
+        ok,_=perform('수정 저장 및 근거 재검수',lambda:save_draft(job,edited,selected,evidence=references))
         if ok:
             S['bundle']=''; S['last_error']=''; S['saved_message']='수정과 검수 목록을 저장했습니다.'
         st.rerun()
@@ -379,7 +445,7 @@ def preview_page(job):
 
 def approval_page(job):
     st.header('⑥ 승인')
-    labels=['사실 일치 확인','후기 출처·허가 확인','효능·수치·광고 표현 확인','대상 플랫폼 업로드 규격은 별도 확인 필요함을 인지']
+    labels=['사실 일치 확인','후기 출처·허가 확인','효능·수치·광고 표현 확인','대상 플랫폼 업로드 규격은 별도 확인 필요함을 인지','상품 사진의 형태·색상이 실제와 다르게 바뀌지 않았는지 확인']
     checks=[st.checkbox(label,key=f'check_{job.name}_{i}') for i,label in enumerate(labels)]
     if st.button('모두 확인했으며 승인',key='accept',type='primary',disabled=not all(checks) or S.get('busy',False)):
         ok,accepted=perform('승인 결과 렌더링',lambda:accept_job(job))

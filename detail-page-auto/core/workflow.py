@@ -31,6 +31,31 @@ def write_json(path,value):
     temporary.replace(path)
 
 
+def prepare_images(facts: ProductFacts, job: Path, cache_dir: Path | None = None):
+    """Shared processing for saved jobs and the input screen's explicit preview."""
+    from .images import process_image
+    stored=facts.model_copy(deep=True)
+    metadata=[]; reviews=[]
+    reasons={
+        'image_low_resolution':'사진 해상도 부족: 너비 860px 미만입니다. 확대하지 않았으므로 선명도를 확인하세요.',
+        'background_suspect':'배경 제거 실패 의심: 전경 면적이 너무 작거나 큽니다. 상품 형태를 확인하세요.',
+        'background_failed':'배경 제거에 실패했습니다. 기본 처리본을 유지했습니다. 설치·모델·네트워크 상태를 확인하세요.',
+    }
+    for index,image in enumerate(stored.images):
+        result=process_image(Path(job)/image.path,job,image.processing,stored.product.brand_color,cache_dir=cache_dir)
+        relative=lambda path:str(Path(path).relative_to(job)) if path else None
+        image.derived_path=relative(result.selected_path)
+        record={**result.metadata,'source_path':image.path,'normalized_path':relative(result.normalized_path),
+                'selected_path':image.derived_path,'mask_preview_path':relative(result.mask_preview_path),
+                'file_paths':[relative(result.normalized_path.parent/name) for name in result.metadata['files']]}
+        metadata.append(record)
+        for item in result.reviews:
+            reviews.append({'section_id':'images','field_path':f'images.{index}',
+                            'reason':reasons.get(item['reason'],item['reason']),
+                            'detail':item.get('message',''),'fact_ids':[]})
+    return stored,metadata,reviews
+
+
 def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, method='paste', locked=None, locked_review=None):
     if type(max_attempts) is not int or max_attempts<1:
         raise ValueError('max_attempts must be a positive integer')
@@ -44,14 +69,18 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
             target=f'images/image-{i:03}{path.suffix.lower()}'
             shutil.copyfile(path,job/target); mapping[name]=target
         snapshot=facts.model_dump(exclude_none=True)
-        for image in snapshot['images']: image['path']=mapping[image['path']]
+        for image in snapshot['images']:
+            image['path']=mapping[image['path']]
+            image.pop('derived_path',None)
         stored=ProductFacts.model_validate(snapshot)
+        stored,image_metadata,image_reviews=prepare_images(stored,job,output/'.image-cache')
+        snapshot=stored.model_dump(exclude_none=True)
         write_json(job/'facts.json',snapshot)
         write_json(job/'locked.json',locked or {})
         write_json(job/'edits.json',{'locked_sections':list(locked or {})})
         write_json(job/'locked-review.json',locked_review or [])
         (job/'prompt.md').write_text(make_prompt(stored,locked),encoding='utf-8')
-        write_json(job/'manifest.json',{'prompt_version':VERSION,'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer'})
+        write_json(job/'manifest.json',{'prompt_version':VERSION,'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews})
         return job
     except BaseException:
         shutil.rmtree(job)
@@ -84,6 +113,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         facts=ProductFacts.model_validate(read_json(job/'facts.json'))
         document,review=assemble(facts,copy,locked=read_json(job/'locked.json'),terms=terms)
         review+=read_json(job/'locked-review.json')
+        review+=manifest.get('image_reviews',[])
         # Verify all paths including preserved manual sections before publishing success files.
         from .collect import collect_images
         collect_images(document,job)
@@ -138,7 +168,15 @@ def accept_job(source: Path):
         write_json(staging/'review.json',review)
         for name in ('facts.json','copy.json'):
             shutil.copyfile(provenance_path(source,name),staging/name)
-        for name in ('edits.json','locked-evidence.json'):
+        for record in original_manifest.get('image_processing',[]):
+            for name in record.get('file_paths',[]):
+                from .images import validate_source
+                path=source/name
+                if not path.resolve().is_relative_to(source): raise ValueError('derived path outside source job')
+                validate_source(path)
+                destination=staging/name;destination.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(path,destination)
+        for name in ('edits.json','locked-evidence.json','edited-evidence.json'):
             if (source/name).is_file():
                 shutil.copyfile(source/name,staging/name)
         rendered=render(document,staging,staging/'rendered',png=True,
@@ -149,6 +187,8 @@ def accept_job(source: Path):
         rendered_manifest.update(source_job=str(source),accepted_at=accepted_at)
         write_json(rendered/'manifest.json',rendered_manifest)
         write_json(staging/'manifest.json',{
+            'image_processing':original_manifest.get('image_processing',[]),
+            'image_reviews':original_manifest.get('image_reviews',[]),
             'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),
             'review_terms':original_manifest.get('review_terms',list(DEFAULT_TERMS)),
             'prompt_version':original_manifest.get('prompt_version'),
@@ -195,6 +235,9 @@ def regenerate_job(previous: Path):
         child_manifest=read_json(child/'manifest.json')
         child_manifest['review_terms']=read_json(previous/'manifest.json').get('review_terms',list(DEFAULT_TERMS))
         write_json(child/'manifest.json',child_manifest)
+        if (previous/'edited-evidence.json').exists():
+            edited_refs=read_json(previous/'edited-evidence.json')
+            write_json(child/'edited-evidence.json',{sid:refs for sid,refs in edited_refs.items() if sid in locked})
         original=read_json(previous/'copy.json')
         preserved=read_json(previous/'locked-evidence.json') if (previous/'locked-evidence.json').exists() else {}
         write_json(child/'locked-evidence.json',{sid:preserved.get(sid,original.get(section['type'],{}) if sid==section['type']+'-1' else {}) for sid,section in locked.items()})

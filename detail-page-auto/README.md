@@ -1,6 +1,6 @@
-# 상세페이지 자동화 — M1 + M2
+# 상세페이지 자동화 — M1 + M2 + M3 + M4
 
-Python 3.12에서 로컬 JSON과 PNG/JPEG를 받아 HTML과 폭 860px JPG를 만듭니다. M2는 구독 채팅의 붙여넣기 또는 공식 CLI로 문구 초안을 받습니다. M4는 단일 사용자용 로컬 Streamlit 화면을 제공합니다. 유료 API·배경 제거·크롤링·배포 기능은 포함하지 않습니다.
+Python 3.12에서 로컬 JSON과 PNG/JPEG를 받아 HTML과 폭 860px JPG를 만듭니다. M2는 구독 채팅의 붙여넣기 또는 공식 CLI로 문구 초안을 받습니다. M3는 원본을 보존하며 방향·색 공간·크기를 정리하고 선택적으로 로컬 배경 제거를 지원합니다. M4는 단일 사용자용 로컬 Streamlit 화면을 제공합니다. 유료 API·외부 이미지 서비스·크롤링·배포 기능은 포함하지 않습니다.
 
 ## 화면으로 사용하기
 
@@ -23,10 +23,10 @@ Python 3.12에서 로컬 JSON과 PNG/JPEG를 받아 HTML과 폭 860px JPG를 만
    ```
 
 3. 같은 컴퓨터의 브라우저에서 `http://127.0.0.1:8501`을 엽니다. 주소는 `127.0.0.1`에만 바인딩되며 사용 통계 수집은 꺼져 있습니다. 업로드 상한은 한 장당 10MB입니다. 외부 공개·다중 사용자용 서버가 아닙니다.
-4. 처음에는 **샘플 데이터 넣기**로 가상 상품을 체험할 수 있습니다. 실제 사용 시 상품명·가격·사실·사진을 바꾸고, 주장은 근거를 입력하세요. 사진은 실제 PNG/JPEG 형식으로 즉시 검증하고 안전한 파일명으로 저장합니다. 실제 후기만 출처·허가와 함께 입력하세요. 사실 행의 위로/아래로/삭제/추가 버튼으로 순서를 조정할 수 있고, facts.json 불러오기·내보내기도 지원합니다. JSON을 불러오면 사진은 별도로 올려 주세요.
+4. 처음에는 **샘플 데이터 넣기**로 가상 상품을 체험할 수 있습니다. 실제 사용 시 상품명·가격·사실·사진을 바꾸고, 주장은 근거를 입력하세요. 사진은 실제 PNG/JPEG 형식으로 즉시 검증하고 안전한 파일명으로 저장합니다. 사진마다 배경 제거 여부를 선택하고 **사진 처리 미리보기**를 눌러 처리 전/후와 체크무늬 마스크를 비교하세요. 체크를 해제하면 기본 방향·색 공간·크기 정리본을 사용합니다. 배경 제거는 선택 의존성을 설치했을 때만 활성화됩니다. 실제 후기만 출처·허가와 함께 입력하세요. 사실 행의 위로/아래로/삭제/추가 버튼으로 순서를 조정할 수 있고, facts.json 불러오기·내보내기도 지원합니다. JSON을 불러오면 사진은 별도로 올려 주세요.
 5. **저장하고 프롬프트 만들기**를 누르고 코드 상자의 복사 버튼으로 전체 프롬프트를 복사해 Claude·ChatGPT·Gemini 채팅에 붙여넣습니다. 화면이 채팅 사이트를 자동 조작하지 않습니다. 답변 전체를 ③에 붙여넣어 검증하세요. 오류가 있으면 화면의 수정 프롬프트를 같은 채팅에 보내 다시 받은 답변을 입력합니다.
-6. ④에서 경고와 근거를 확인하고 문구를 고친 뒤 **수정 저장·재검수**를 누릅니다. 글자 수를 임의로 자르지 않으며 M1 상한을 넘으면 저장 오류를 표시합니다. 상품명·가격·후기·스펙·안내는 ①에서 수정해 새 작업을 시작하세요. 잠근 섹션은 재생성에서도 문구와 근거를 유지합니다. 수정 이력은 `history.json`에 기록하고 원본 `copy.json`은 보존합니다.
-7. ⑤에서 미리보기를 생성합니다. 승인 전에는 항상 DRAFT 파일명과 표시가 붙습니다. 같은 저장 버전의 미리보기 버튼을 다시 눌러도 렌더링을 중복 실행하지 않습니다. ⑥의 네 확인 항목을 모두 체크해야 승인할 수 있습니다. 승인은 현재 저장 문구를 다시 검증·재검수하고 원본을 바꾸지 않은 새 작업으로 일반 JPG 파일명을 생성합니다.
+6. ④에서 경고와 근거를 확인하고 문구를 고친 뒤 **수정 저장·재검수**를 누릅니다. 글자 수를 임의로 자르지 않으며 M1 상한을 넘으면 저장 오류를 표시합니다. 상품명·가격·후기·스펙·안내는 ①에서 수정해 새 작업을 시작하세요. 각 문구의 근거는 기존 사실 목록의 다중 선택에서 수정할 수 있고, 고객 고민·특징·사용법·FAQ 항목은 추가·삭제할 수 있습니다. 근거를 수정하거나 부적절한 항목을 지운 뒤 재검수하면 해소된 경고가 없어집니다. 잠근 섹션은 재생성에서도 문구와 수정한 근거를 유지합니다. 수정 이력은 `history.json`에 기록하고 원본 `copy.json`은 보존합니다.
+7. ⑤에서 미리보기를 생성합니다. 승인 전에는 항상 DRAFT 파일명과 표시가 붙습니다. 같은 저장 버전의 미리보기 버튼을 다시 눌러도 렌더링을 중복 실행하지 않습니다. ⑥의 다섯 확인 항목을 모두 체크해야 승인할 수 있습니다. 승인은 현재 저장 문구를 다시 검증·재검수하고 원본을 바꾸지 않은 새 작업으로 일반 JPG 파일명을 생성합니다.
 8. ⑦에서 보이는 이미지와 **작업 버전 ID**를 확인하고 ZIP을 받습니다. ZIP의 manifest에도 같은 ID가 들어 있으며 해당 이미지·HTML·assets·draft.json·review.json만 묶습니다. 승인 전 DRAFT ZIP도 받을 수 있습니다. 저장 문구를 수정하면 이전 미리보기 포인터를 무효화하며, 예전 ZIP을 새로운 문구와 섞지 않습니다.
 9. 화면을 닫았다 다시 열면 사이드바 **최근 작업 → 기존 작업 이어하기**를 선택하세요. 상품명·생성 시각(KST)·상태로 작업을 찾을 수 있습니다. 작업은 `outputs/job-*`에 유지되며 입력 사진 작업 폴더도 outputs 안에만 생성합니다. 필요하면 `DETAIL_PAGE_OUTPUTS` 환경변수로 로컬 저장 위치를 바꿀 수 있습니다.
 
@@ -206,3 +206,80 @@ M1과 M2 전체를 실행하며 실제 Chromium을 사용합니다. AI 답변은
 명령은 원본과 같은 상위 디렉터리에 새로운 `job-고유값`을 만들고 경로를 출력합니다. 새 폴더의 `draft.json`, `review.json`, 참조 이미지 사본과 `rendered/job-고유값/page-001.jpg`(PNG도 포함)를 확인하세요. 일반 파일명을 사용하고 `manifest.json`에는 `method: "accept"`, `attempts: 0`, `review_accepted: true`, `source_job`(원본 작업의 절대경로), 승인 시각, `rendered_job` 경로를 기록합니다. 렌더링 manifest에도 승인 여부와 원본 작업 경로가 남습니다. 검수 목록이 없더라도 명시적 승인 사실은 true로 기록합니다.
 
 현재 문구의 근거 ID와 수치·용어를 다시 검사해 새 작업의 `review.json`과 `needs_review`를 갱신합니다. 이는 보조 검사이므로 사람이 사실과 광고 표현을 최종 확인한 뒤 실행하세요. 프롬프트·이전 답변·실제 AI·CLI 로그인이 필요하지 않으며, 검증·렌더링에 실패하면 미완성 승인 작업 폴더를 제거합니다. 재검수에는 `facts.json`, 원본 `copy.json`, `manifest.json`이 필요하며 이전 승인 작업의 경우 `source_job` 참조를 통해 원본 스냅샷을 찾을 수 있습니다. 승인 결과는 최종 출력 사본이며 문구 재생성은 원본 작업을 기준으로 진행하세요.
+
+## 사진 처리와 선택 배경 제거
+
+기본 설치만으로 EXIF 방향 보정, sRGB 변환, 긴 변 최대 1720px 축소가 동작합니다. 작은 사진은 확대하지 않고 너비 860px 미만이면 선명도 검수 항목을 추가합니다. 원본은 `images/image-000.*` 등으로 그대로 보존하며, 위치(GPS)·촬영 정보 등 개인정보성 메타데이터는 파생 파일에서 제거합니다. 투명 PNG의 알파 채널은 유지합니다. CMYK·그레이스케일·팔레트와 ICC 프로필도 처리합니다.
+
+`facts.json` 이미지 항목의 예시(기존 processing 없는 파일도 기본값으로 동작):
+
+```json
+{
+  "path": "product-hires.png",
+  "role": "hero",
+  "processing": {
+    "auto_orient": true,
+    "resize": true,
+    "max_edge": 1720,
+    "remove_background": false,
+    "background": "brand",
+    "padding": 0.08
+  }
+}
+```
+
+`background`는 `brand`(브랜드 색상 12% + 흰색 88%) 또는 `white`를 선택합니다. 배경 제거한 상품을 중앙에 여백과 함께 배치하고 별도 그림자는 추가하지 않습니다. `derived_path`는 프로그램이 생성하는 경로이며 입력 시 직접 작성할 필요가 없습니다. 파생본은 `images/derived/<내용·설정 해시>/<해시>-normalized|foreground|mask-preview|placed.png`로 분리합니다. 설정별 하위 폴더는 과거 결과를 덮어쓰지 않고 캐시를 검증하기 위한 구조입니다.
+
+원본 SHA-256, 설정, 적용 단계, 도구 버전, 파생본 체크섬, 검수 항목을 작업 manifest의 `image_processing`, `image_reviews`에 기록합니다. 동일 원본·설정·브랜드 색상·도구 버전이면 `outputs/.image-cache`에서 재사용합니다. 손상된 캐시는 재검증하며 배경 제거 실패 결과는 성공 캐시로 저장하지 않습니다. 기존 작업의 결과는 바꾸지 않고 새 작업에서 처리합니다.
+
+사진 처리만 CLI에서 확인하려면:
+
+```bash
+.venv/bin/python cli.py images --facts samples/facts.json --images samples --output outputs
+```
+
+AI 호출 없이 원본·파생본·manifest가 있는 새 작업을 만듭니다. `prompt`와 `generate`도 같은 처리 설정을 사용합니다. 기본 정리는 성공했으나 요청한 배경 제거가 실패하면 기본 처리본을 보존하고 경고를 기록합니다. `images` 명령은 이 경우 0이 아닌 종료 코드로 알립니다. 배경 제거 실패나 전경 면적 5% 미만/98% 초과는 검수 항목으로 남기며 최종 판단은 사람이 합니다.
+
+### 배경 제거 선택 설치 (CPU)
+
+유료 API·외부 이미지 처리 서비스는 사용하지 않습니다. 기본 환경에는 rembg를 넣지 않으며, 원하는 경우 기본 패키지를 포함한 별도 해시 잠금 파일을 설치합니다.
+
+```bash
+UV_CACHE_DIR=/tmp/template-uv uv pip sync --python .venv/bin/python --require-hashes requirements-bg.lock
+# pip 사용 시
+.venv/bin/python -m pip install --require-hashes -r requirements-bg.lock
+```
+
+도구는 **rembg 2.0.87 (MIT)**, 모델은 **u2netp / U-2-Net (공식 프로젝트 Apache-2.0)**를 명시적으로 선택합니다. rembg의 다른 기본 모델을 자동 선택하지 않습니다.
+
+- rembg 라이선스: https://github.com/danielgatis/rembg/blob/main/LICENSE.txt
+- U-2-Net 라이선스: https://github.com/xuebinqin/U-2-Net/blob/master/LICENSE
+- 모델 다운로드: https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
+- 최초 모델 다운로드 크기: **4,574,861바이트(약 4.57MB)**. Python 선택 의존성 다운로드 용량은 별도입니다.
+- 공식 모델 MD5: `8e83ca70e441ab06c318d82300c84806`. 새 다운로드와 기존 파일 모두 검증하며 `MODEL_CHECKSUM_DISABLED`는 허용하지 않습니다.
+- 모델 루트 기본값: 현재 실행 폴더의 `outputs/models`. rembg 2.0.87의 실제 파일 위치는 `<루트>/models/u2netp/u2netp.onnx`입니다. 예: `outputs/models/models/u2netp/u2netp.onnx`.
+- 위치 변경: `DETAIL_PAGE_MODEL_DIR` 환경변수 또는 확인 스크립트의 `--model-dir`.
+- 모델 파일은 `.gitignore`로 제외합니다. 모델이 없으면 배경 제거 요청 시 공식 위치에서 처음 다운로드합니다. 오프라인·손상·설치 실패는 경고로 알리고 기본 처리본은 유지합니다. CPU 스레드는 2개로 제한하고 ONNX Runtime 사용 통계는 끕니다.
+
+⑥ 승인 체크리스트에서 **상품 사진의 형태·색상이 실제와 다르게 바뀌지 않았는지 확인**해야 합니다. 투명 마스크가 잘못된 상품의 모서리를 지우거나 색상을 변형하지 않았는지 전/후를 비교하고, 마음에 들지 않으면 배경 제거 체크를 해제하세요.
+
+### 실제 모델 수동 확인과 문서 캡처
+
+자동 테스트는 실제 모델을 실행하거나 다운로드하지 않습니다. 별도 확인 스크립트만 직접 생성한 도형 사진으로 실제 모델을 1회 실행합니다.
+
+```bash
+.venv/bin/python tools/bg_check.py --model-dir outputs/models --output outputs/bg-check --download-model
+# 이미 모델이 있으면 다운로드 허용 옵션 없이 실행
+.venv/bin/python tools/bg_check.py --model-dir outputs/models --output outputs/bg-check
+.venv/bin/python tools/make_image_samples.py --output outputs/m3-samples
+```
+
+기본 의존성만 설치했거나 모델이 없고 다운로드를 허용하지 않았다면 명확한 FAILED 메시지와 비정상 종료 코드를 반환합니다. 성공 시 실제 처리 시간, 프로세스 최대 RSS(MiB, Linux 기준), 원본·처리본·마스크 경로를 출력합니다. 모델 품질을 자동 보장하지 않습니다.
+
+pytest의 브라우저 캡처·ZIP·서버 로그는 `tmp_path`에만 저장합니다. README용 5장 캡처를 의도적으로 갱신할 때만 다음 도구를 실행하세요.
+
+```bash
+.venv/bin/python tools/make_screenshots.py
+```
+
+이 도구는 `docs/images/`를 갱신하며 결과 ZIP은 `outputs/m4-browser/approved.zip`에 둡니다. `samples/product.png`는 이전 원본을 그대로 유지하고, M3 예시용 `samples/product-hires.png`는 Pillow로 별도 생성한 이미지입니다(`tools/make_image_samples.py --fixture`로 명시적 재생성). 테스트에서는 이 파일들을 읽기만 합니다.
