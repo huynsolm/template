@@ -1,0 +1,57 @@
+{
+  "hero": {
+    "headline": "매일의 작은 여유를 담다",
+    "subcopy": "간결한 형태와 차분한 그린 색감",
+    "fact_ids": [
+      "design"
+    ]
+  },
+  "pain": {
+    "title": "간결한 디자인을 찾고 계신가요?",
+    "fact_ids": [
+      "design"
+    ],
+    "items": [
+      {
+        "text": "차분한 색상으로 공간에 어울리는 보틀",
+        "fact_ids": [
+          "design"
+        ]
+      }
+    ]
+  },
+  "solution": {
+    "title": "필요한 것만 담은 디자인",
+    "body": "가상 샘플의 단정한 형태와 그린 색상을 살펴보세요.",
+    "fact_ids": [
+      "design"
+    ]
+  },
+  "features": [
+    {
+      "title": "그린 컬러",
+      "desc": "차분한 그린 색상입니다.",
+      "fact_ids": [
+        "design"
+      ]
+    }
+  ],
+  "how_to": [
+    {
+      "title": "설명서 확인",
+      "desc": "실제 제품의 사용 설명서를 확인하세요.",
+      "fact_ids": [
+        "usage"
+      ]
+    }
+  ],
+  "faq": [
+    {
+      "q": "실제 판매 상품인가요?",
+      "a": "아닙니다. 렌더링 예시용 가상 상품입니다.",
+      "fact_ids": [
+        "spec-demo"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# Only options verified with installed CLI help are enabled by default.
+# Prompts always arrive on stdin. Commands are argv arrays, never shell strings.
+# An entire argument equal to {answer_file} receives a temporary output path.
+[providers.codex]
+command = ["codex", "exec", "--sandbox", "read-only", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--output-last-message", "{answer_file}", "-"]
+
+# These CLIs were unavailable for help/version verification in this environment.
+# Verify your installed version's noninteractive and permission options first;
+# then replace configured=false with command=[...]. See docs/CLI_PROVIDERS.md.
+[providers.claude]
+configured = false
+
+[providers.gemini]
+configured = false

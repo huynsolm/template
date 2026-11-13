@@ -185,3 +185,27 @@ def test_short_page_respects_split_limit(tmp_path,data):
     manifest=json.loads((out/'manifest.json').read_text())
     assert all(p['height']<=800 for p in manifest['pages'])
     assert manifest['height']==manifest['sections'][-1]['bottom']
+
+
+def test_expected_sample_hydrates_shared_font():
+    from tools.check_portability import check
+    assert not (ROOT/'samples/expected/assets/fonts/NotoSansCJK-Regular.ttc').exists()
+    result=check(ROOT/'samples/expected')
+    assert result['relocated_capture']['pixel_identical_to_expected_pngs']
+    assert result['relocated_capture']['font_loaded']
+    assert result['relative_assets_exist']
+
+
+@pytest.mark.parametrize('available,expected', [
+    ('explicit','explicit-chromium'),
+    ('playwright','/playwright/chrome'),
+    ('bundle','/opt/pw-browsers/chromium'),
+    ('path','/usr/bin/chromium'),
+])
+def test_chromium_resolution_order(monkeypatch,available,expected):
+    from core.render import chromium_path
+    monkeypatch.delenv('M1_CHROMIUM_PATH',raising=False)
+    if available=='explicit': monkeypatch.setenv('M1_CHROMIUM_PATH','explicit-chromium')
+    monkeypatch.setattr(Path,'is_file',lambda path: str(path)=={'playwright':'/playwright/chrome','bundle':'/opt/pw-browsers/chromium'}.get(available))
+    monkeypatch.setattr(shutil,'which',lambda name:'/usr/bin/chromium')
+    assert chromium_path('/playwright/chrome')==expected

@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "product": {
+    "name": "가상 샘플 보틀",
+    "category": "생활용품",
+    "price": "판매하지 않음",
+    "brand_color": "#305b46"
+  },
+  "facts": [
+    {
+      "id": "design",
+      "kind": "feature",
+      "text": "간결한 형태와 차분한 그린 색상의 가상 샘플 보틀"
+    },
+    {
+      "id": "spec-demo",
+      "kind": "spec",
+      "text": "실제 판매하지 않는 렌더링 예시 상품"
+    },
+    {
+      "id": "usage",
+      "kind": "usage",
+      "text": "실제 제품 사용 시 판매자가 제공하는 설명서를 확인한다"
+    }
+  ],
+  "images": [
+    {
+      "path": "product.png",
+      "role": "hero",
+      "alt": "직접 그린 가상 보틀"
+    }
+  ],
+  "notice": "렌더링 테스트용 가상 상품이며 판매하지 않습니다."
+}

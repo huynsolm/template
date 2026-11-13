@@ -21,6 +21,19 @@ from .schema import Document
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def chromium_path(playwright_default):
+    explicit = os.environ.get('M1_CHROMIUM_PATH')
+    if explicit:
+        return explicit
+    if Path(playwright_default).is_file():
+        return playwright_default
+    bundled = Path('/opt/pw-browsers/chromium')
+    for candidate in [bundled, bundled / 'chrome-linux/chrome', bundled / 'chrome-linux64/chrome']:
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which('chromium')
+
+
 def capture(html: Path, max_height: int = 4000):
     """Load only this export's files, await assets, and return image + geometry."""
     html = Path(html).resolve()
@@ -28,9 +41,7 @@ def capture(html: Path, max_height: int = 4000):
     failures = []
     try:
         with sync_playwright() as pw:
-            executable = os.environ.get('M1_CHROMIUM_PATH')
-            if not executable and not Path(pw.chromium.executable_path).exists():
-                executable = shutil.which('chromium')
+            executable = chromium_path(pw.chromium.executable_path)
             browser = pw.chromium.launch(executable_path=executable, headless=True)
             try:
                 context = browser.new_context(viewport={'width': 860, 'height': 1}, device_scale_factor=1, service_workers='block', offline=True)

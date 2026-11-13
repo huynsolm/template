@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright, Error as BrowserError
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from core.render import capture
+from core.render import capture, chromium_path
 
 
 class References(HTMLParser):
@@ -33,6 +33,9 @@ def check(source: Path):
     with tempfile.TemporaryDirectory(prefix='m1-portability-') as temporary:
         copied = Path(temporary) / 'original'
         shutil.copytree(source, copied)
+        font = copied / 'assets/fonts/NotoSansCJK-Regular.ttc'
+        if not font.exists():
+            shutil.copyfile(ROOT / 'assets/fonts/NotoSansCJK-Regular.ttc', font)
         moved = Path(temporary) / '다른 경로 with spaces'
         shutil.move(copied, moved)
         html = moved / 'page.html'
@@ -64,7 +67,7 @@ def check(source: Path):
         assert ImageChops.difference(image, expected).getbbox() is None
         direct = {}
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(executable_path=shutil.which('chromium'))
+            browser = pw.chromium.launch(executable_path=chromium_path(pw.chromium.executable_path))
             try:
                 context = browser.new_context(offline=True, viewport={'width': 860, 'height': 1})
                 page = context.new_page()
