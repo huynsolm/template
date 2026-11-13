@@ -64,16 +64,17 @@ def validation_errors(exc):
     return [{'field_path':'answer','reason':str(exc),'allowed_range':'one JSON object conforming to prompt JSON Schema'}]
 
 
-def ingest_job(job: Path, answer: str, source_label='', render_output=False, terms=DEFAULT_TERMS, accept_review=False):
+def ingest_job(job: Path, answer: str, source_label='', render_output=False, terms=None, accept_review=False):
     job=Path(job)
     manifest=read_json(job/'manifest.json')
     if (job/'draft.json').exists():
         raise ValueError('job already succeeded; use accept --job to approve or prompt --from-job --regenerate for new copy')
     if manifest['attempts']>=manifest['max_attempts']:
         raise ValueError('attempt limit reached; create a new job')
+    terms=tuple(manifest.get('review_terms',DEFAULT_TERMS)) if terms is None else tuple(terms)
     attempt=manifest['attempts']+1
     (job/'attempts'/f'answer-{attempt}.txt').write_text(answer,encoding='utf-8')
-    manifest.update(attempts=attempt,source_label=source_label,updated_at=now(),status='validating')
+    manifest.update(attempts=attempt,source_label=source_label,updated_at=now(),status='validating',review_terms=list(terms))
     write_json(job/'manifest.json',manifest)
     parsed=answer
     stage=job/'.assembled'
@@ -118,8 +119,10 @@ def accept_job(source: Path):
     draft_bytes=(source/'draft.json').read_bytes()
     document=Document.model_validate_json(draft_bytes)
     images=collect_images(document,source)
-    review_bytes=(source/'review.json').read_bytes()
-    review=json.loads(review_bytes)
+    from .editor import reassess_draft, provenance_path, snapshot_bundle
+    review=reassess_draft(source,document)
+    seller=ProductFacts.model_validate(read_json(provenance_path(source,'facts.json')))
+    images.update(seller.validate_images(source))
     original_manifest=read_json(source/'manifest.json')
     if not isinstance(review,list) or not all(isinstance(item,dict) for item in review):
         raise ValueError('review.json must be an array of review items')
@@ -132,15 +135,22 @@ def accept_job(source: Path):
             destination.parent.mkdir(parents=True,exist_ok=True)
             shutil.copyfile(path,destination)
         (staging/'draft.json').write_bytes(draft_bytes)
-        (staging/'review.json').write_bytes(review_bytes)
+        write_json(staging/'review.json',review)
+        for name in ('facts.json','copy.json'):
+            shutil.copyfile(provenance_path(source,name),staging/name)
+        for name in ('edits.json','locked-evidence.json'):
+            if (source/name).is_file():
+                shutil.copyfile(source/name,staging/name)
         rendered=render(document,staging,staging/'rendered',png=True,
                         needs_review=bool(review),accept_review=True)
+        snapshot_bundle(rendered,draft_bytes,review)
         accepted_at=now()
         rendered_manifest=read_json(rendered/'manifest.json')
         rendered_manifest.update(source_job=str(source),accepted_at=accepted_at)
         write_json(rendered/'manifest.json',rendered_manifest)
         write_json(staging/'manifest.json',{
-            'method':'accept','attempts':0,
+            'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),
+            'review_terms':original_manifest.get('review_terms',list(DEFAULT_TERMS)),
             'prompt_version':original_manifest.get('prompt_version'),
             'source_label':original_manifest.get('source_label',''),
             'source_job':str(source),
@@ -180,8 +190,14 @@ def regenerate_job(previous: Path):
             sections.append(next(s.model_dump(exclude_none=True) for s in document.sections if s.type=='hero'))
         checked=Document.model_validate({'schema_version':'1.0','product':facts.product.model_dump(),'sections':sections})
         locked_assets=collect_images(checked,previous)
-    child=create_job(facts,previous,previous.parent,max_attempts=read_json(previous/'manifest.json')['max_attempts'],locked=locked,locked_review=review)
+    child=create_job(facts,previous,previous.parent,max_attempts=read_json(previous/'manifest.json').get('max_attempts',5),locked=locked,locked_review=review)
     try:
+        child_manifest=read_json(child/'manifest.json')
+        child_manifest['review_terms']=read_json(previous/'manifest.json').get('review_terms',list(DEFAULT_TERMS))
+        write_json(child/'manifest.json',child_manifest)
+        original=read_json(previous/'copy.json')
+        preserved=read_json(previous/'locked-evidence.json') if (previous/'locked-evidence.json').exists() else {}
+        write_json(child/'locked-evidence.json',{sid:preserved.get(sid,original.get(section['type'],{}) if sid==section['type']+'-1' else {}) for sid,section in locked.items()})
         for name,source in locked_assets.items():
             destination=child/name
             destination.parent.mkdir(parents=True,exist_ok=True)
@@ -194,13 +210,27 @@ def regenerate_job(previous: Path):
         raise
 
 
-def generate_job(facts, images, output, provider, max_attempts=3, source_label='', render_output=False, terms=DEFAULT_TERMS, accept_review=False):
-    job=create_job(facts,images,output,max_attempts=max_attempts,method=f'cli:{provider.name}')
-    for attempt in range(max_attempts):
+def generate_job(facts, images, output, provider, max_attempts=3, source_label='', render_output=False, terms=None, accept_review=False, existing_job: Path | None = None):
+    if type(max_attempts) is not int or max_attempts<1:
+        raise ValueError('max_attempts must be a positive integer')
+    if existing_job is None:
+        job=create_job(facts,images,output,max_attempts=max_attempts,method=f'cli:{provider.name}')
+    else:
+        job=Path(existing_job)
+        if (job/'draft.json').exists():
+            raise ValueError('job already succeeded; regenerate a new prompt job')
+        manifest=read_json(job/'manifest.json')
+        cap=min(max_attempts,manifest['max_attempts'])
+        if manifest['attempts']>=cap:
+            raise ValueError('attempt limit reached; create a new job')
+        manifest.update(method=f'cli:{provider.name}',source_label=source_label,max_attempts=cap,updated_at=now())
+        write_json(job/'manifest.json',manifest)
+    manifest=read_json(job/'manifest.json')
+    for attempt in range(manifest['attempts'],manifest['max_attempts']):
         prompt=(job/('prompt.md' if attempt==0 else 'fix-prompt.md')).read_text(encoding='utf-8')
         answer=provider.generate(prompt)
         try:
             return ingest_job(job,answer,source_label=source_label,render_output=render_output,terms=terms,accept_review=accept_review)
         except ValueError:
-            if attempt+1==max_attempts: raise
+            if attempt+1==manifest['max_attempts']: raise
     return job

@@ -1,0 +1,13 @@
+[server]
+address = "127.0.0.1"
+maxUploadSize = 10
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[runner]
+fastReruns = false

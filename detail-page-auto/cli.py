@@ -64,7 +64,7 @@ def main(argv=None):
             generate.add_argument('--render',action='store_true')
             generate.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
             args=parser.parse_args(argv)
-            terms=DEFAULT_TERMS
+            terms=None
             if getattr(args,'review_terms',None):
                 terms=json.loads(args.review_terms.read_text(encoding='utf-8'))
                 if not isinstance(terms,list) or not all(isinstance(t,str) and t for t in terms):
