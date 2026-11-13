@@ -151,4 +151,16 @@ M1과 M2 전체를 실행하며 실제 Chromium을 사용합니다. AI 답변은
 .venv/bin/python cli.py ingest --job outputs/job-EXAMPLE --answer answer.txt --render --accept-review
 ```
 
-승인 시 `page-001.jpg`/`.png`를 사용하고 `review_accepted: true`를 기록합니다. 검수 항목이 남아 있다는 사실을 보존하기 위해 `needs_review`는 계속 `true`이며 `review.json`과 경고도 유지됩니다. 이미 완료된 작업은 덮어쓰지 않으므로, 초안을 먼저 생성했다면 `prompt --from-job ... --regenerate`로 새 작업을 만든 뒤 승인해 주세요. 검수 항목이 없으면 승인 옵션 없이도 일반 파일명을 쓰며 `needs_review`는 `false`입니다.
+승인 시 `page-001.jpg`/`.png`를 사용하고 `review_accepted: true`를 기록합니다. 검수 항목이 남아 있다는 사실을 보존하기 위해 `needs_review`는 계속 `true`이며 `review.json`과 경고도 유지됩니다. 이미 완료된 작업은 덮어쓰지 않습니다. 초안을 먼저 생성했다면 아래 `accept` 명령으로 답변 재입력 없이 승인할 수 있습니다. 검수 항목이 없으면 승인 옵션 없이도 일반 파일명을 쓰며 `needs_review`는 `false`입니다.
+
+### 완성한 초안 승인: AI 호출·답변 재입력 없이 렌더링
+
+```bash
+.venv/bin/python cli.py accept --job outputs/job-EXAMPLE
+```
+
+원본 작업의 현재 `draft.json`을 읽고 M1 스키마와 참조 이미지의 경로·파일 형식·용량·해상도를 검증합니다. 직접 수정한 문구와 이미지도 그대로 사용하며 원본 작업의 파일은 수정하지 않습니다. 잘못된 JSON·문구 길이·누락 이미지·심볼릭 링크는 오류로 반환합니다.
+
+명령은 원본과 같은 상위 디렉터리에 새로운 `job-고유값`을 만들고 경로를 출력합니다. 새 폴더의 `draft.json`, `review.json`, 참조 이미지 사본과 `rendered/job-고유값/page-001.jpg`(PNG도 포함)를 확인하세요. 일반 파일명을 사용하고 `manifest.json`에는 `method: "accept"`, `attempts: 0`, `review_accepted: true`, `source_job`(원본 작업의 절대경로), 승인 시각, `rendered_job` 경로를 기록합니다. 렌더링 manifest에도 승인 여부와 원본 작업 경로가 남습니다. 검수 목록이 없더라도 명시적 승인 사실은 true로 기록합니다.
+
+기존 검수 항목은 삭제하지 않고 `needs_review`로 유지합니다. 수동 수정 후 새로운 사실 검사를 자동 수행하는 명령은 아니므로 사람이 최종 내용을 확인한 뒤 실행하세요. 프롬프트·이전 답변·실제 AI·CLI 로그인이 필요하지 않으며, 검증·렌더링에 실패하면 미완성 승인 작업 폴더를 제거합니다. 원본 `review.json`과 `manifest.json`은 승인 이력 연결을 위해 필요합니다. 승인 결과는 최종 출력 사본이며 문구 재생성은 원본 작업을 기준으로 진행하세요.

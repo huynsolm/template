@@ -260,3 +260,81 @@ def test_cli_accept_review_option(tmp_path,facts,answer):
     assert 'WARNING' in result.stderr
     assert next((job/'rendered').glob('job-*/page-001.jpg')).exists()
     assert json.loads((job/'manifest.json').read_text())['review_accepted'] is True
+
+
+def snapshot_job(job):
+    return {str(p.relative_to(job)):(p.read_bytes(),p.stat().st_mtime_ns) for p in job.rglob('*') if p.is_file()}
+
+
+@pytest.mark.parametrize('with_review',[False,True])
+def test_accept_current_edited_draft_without_ai(tmp_path,facts,answer,monkeypatch,with_review):
+    from core.workflow import create_job,ingest_job,accept_job
+    from core.ingest import extract_json
+    from core.providers import CliProvider,PasteProvider
+    from core.schema import Document
+    from PIL import Image
+    job=create_job(facts,ROOT/'samples',tmp_path)
+    data=extract_json(answer)
+    if with_review: data['hero']['fact_ids']=['missing']
+    ingest_job(job,json.dumps(data,ensure_ascii=False))
+    draft=json.loads((job/'draft.json').read_text())
+    draft['sections'][0]['headline']='사람이 직접 수정하고 승인한 제목'
+    Image.new('RGB',(100,100),'blue').save(job/'manual.png')
+    draft['sections'][0]['image']='manual.png'
+    (job/'draft.json').write_text(json.dumps(draft,ensure_ascii=False))
+    # Acceptance must not depend on answer text, prompts, or a fresh provider call.
+    for p in (job/'attempts').glob('answer-*.txt'): p.unlink()
+    (job/'prompt.md').unlink()
+    def forbidden(*args,**kwargs): raise AssertionError('AI/answer provider called')
+    monkeypatch.setattr(CliProvider,'generate',forbidden)
+    monkeypatch.setattr(PasteProvider,'generate',forbidden)
+    before=snapshot_job(job)
+    accepted=accept_job(job)
+    assert accepted!=job and accepted.parent==job.parent
+    assert snapshot_job(job)==before
+    assert Document.model_validate_json((accepted/'draft.json').read_text()).model_dump()==Document.model_validate(draft).model_dump()
+    assert (accepted/'manual.png').read_bytes()==(job/'manual.png').read_bytes()
+    manifest=json.loads((accepted/'manifest.json').read_text())
+    assert manifest['review_accepted'] is True
+    assert manifest['source_job']==str(job.resolve())
+    assert manifest['needs_review'] is with_review
+    output=next((accepted/'rendered').glob('job-*'))
+    rendered=json.loads((output/'manifest.json').read_text())
+    assert rendered['review_accepted'] is True
+    assert (output/'page-001.jpg').exists()
+    assert not list(output.glob('*.DRAFT.*'))
+    assert '사람이 직접 수정하고 승인한 제목' in (output/'page.html').read_text()
+
+
+@pytest.mark.parametrize('case',['invalid_draft','missing_image','symlink_image','render_failure'])
+def test_accept_invalid_source_leaves_no_new_job(tmp_path,facts,answer,case):
+    from core.workflow import create_job,ingest_job,accept_job
+    job=create_job(facts,ROOT/'samples',tmp_path)
+    ingest_job(job,answer)
+    draft=json.loads((job/'draft.json').read_text())
+    if case=='invalid_draft': draft['sections'][0]['headline']='가'*81
+    if case=='missing_image': draft['sections'][0]['image']='missing.png'
+    if case=='symlink_image':
+        (job/'link.png').symlink_to(job/draft['sections'][0]['image'])
+        draft['sections'][0]['image']='link.png'
+    if case=='render_failure':
+        draft['sections'].append({'id':'huge-notice','type':'notice','body':'가\n'*1000})
+    (job/'draft.json').write_text(json.dumps(draft,ensure_ascii=False))
+    before=snapshot_job(job)
+    siblings=set(tmp_path.iterdir())
+    with pytest.raises(ValueError): accept_job(job)
+    assert set(tmp_path.iterdir())==siblings
+    assert snapshot_job(job)==before
+
+
+def test_cli_accept(tmp_path,facts,answer):
+    from core.workflow import create_job,ingest_job
+    job=create_job(facts,ROOT/'samples',tmp_path)
+    ingest_job(job,answer)
+    before=snapshot_job(job)
+    result=subprocess.run([sys.executable,str(ROOT/'cli.py'),'accept','--job',str(job)],capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+    accepted=Path(result.stdout.strip())
+    assert json.loads((accepted/'manifest.json').read_text())['source_job']==str(job.resolve())
+    assert next((accepted/'rendered').glob('job-*/page-001.jpg')).exists()
+    assert snapshot_job(job)==before

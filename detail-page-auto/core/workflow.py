@@ -68,7 +68,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
     job=Path(job)
     manifest=read_json(job/'manifest.json')
     if (job/'draft.json').exists():
-        raise ValueError('job already succeeded; use prompt --from-job --regenerate for a new job')
+        raise ValueError('job already succeeded; use accept --job to approve or prompt --from-job --regenerate for new copy')
     if manifest['attempts']>=manifest['max_attempts']:
         raise ValueError('attempt limit reached; create a new job')
     attempt=manifest['attempts']+1
@@ -93,12 +93,12 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         needs_review=bool(review)
         if render_output:
             if needs_review:
-                print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 --accept-review로 새 작업을 실행하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
+                print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 cli.py accept --job '+str(job)+' 로 승인하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
             render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review)
         for path in stage.iterdir(): path.replace(job/path.name)
         stage.rmdir()
         write_json(job/'attempts'/f'errors-{attempt}.json',[])
-        manifest.update(status='complete',updated_at=now(),needs_review=needs_review,review_accepted=bool(needs_review and accept_review))
+        manifest.update(status='complete',updated_at=now(),needs_review=needs_review,review_accepted=bool(accept_review))
         write_json(job/'manifest.json',manifest)
         return job
     except (ValueError,OSError) as exc:
@@ -109,6 +109,53 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         manifest.update(status='needs_correction',updated_at=now())
         write_json(job/'manifest.json',manifest)
         raise ValueError('; '.join(e['field_path']+': '+e['reason'] for e in errors)) from exc
+
+
+def accept_job(source: Path):
+    """Validate the current manual draft and publish an independent accepted job."""
+    from .collect import collect_images
+    source=Path(source).resolve(strict=True)
+    draft_bytes=(source/'draft.json').read_bytes()
+    document=Document.model_validate_json(draft_bytes)
+    images=collect_images(document,source)
+    review_bytes=(source/'review.json').read_bytes()
+    review=json.loads(review_bytes)
+    original_manifest=read_json(source/'manifest.json')
+    if not isinstance(review,list) or not all(isinstance(item,dict) for item in review):
+        raise ValueError('review.json must be an array of review items')
+    if not isinstance(original_manifest,dict):
+        raise ValueError('manifest.json must be an object')
+    staging=Path(tempfile.mkdtemp(prefix='.pending-accept-',dir=source.parent))
+    try:
+        for name,path in images.items():
+            destination=staging/name
+            destination.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copyfile(path,destination)
+        (staging/'draft.json').write_bytes(draft_bytes)
+        (staging/'review.json').write_bytes(review_bytes)
+        rendered=render(document,staging,staging/'rendered',png=True,
+                        needs_review=bool(review),accept_review=True)
+        accepted_at=now()
+        rendered_manifest=read_json(rendered/'manifest.json')
+        rendered_manifest.update(source_job=str(source),accepted_at=accepted_at)
+        write_json(rendered/'manifest.json',rendered_manifest)
+        write_json(staging/'manifest.json',{
+            'method':'accept','attempts':0,
+            'prompt_version':original_manifest.get('prompt_version'),
+            'source_label':original_manifest.get('source_label',''),
+            'source_job':str(source),
+            'created_at':accepted_at,'accepted_at':accepted_at,
+            'status':'complete','needs_review':bool(review),'review_accepted':True,
+            'rendered_job':str(rendered.relative_to(staging)),
+        })
+        final=staging.with_name('job-'+staging.name.removeprefix('.pending-accept-'))
+        if final.exists():
+            raise ValueError('accepted job destination already exists')
+        staging.rename(final)
+        return final
+    except BaseException:
+        shutil.rmtree(staging)
+        raise
 
 
 class Edits(Model):

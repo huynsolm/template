@@ -6,7 +6,7 @@ from pathlib import Path
 from core.render import render
 from core.schema import Document
 from core.facts import ProductFacts
-from core.workflow import create_job, ingest_job, regenerate_job, generate_job
+from core.workflow import create_job, ingest_job, regenerate_job, generate_job, accept_job
 from core.assemble import DEFAULT_TERMS
 
 
@@ -34,6 +34,8 @@ def main(argv=None):
         else:
             parser=argparse.ArgumentParser(description='M2: 상품 사실 → 붙여넣기 프롬프트 → 문구 검증. M1: --input ...')
             sub=parser.add_subparsers(dest='command',required=True)
+            accept=sub.add_parser('accept',help='현재 draft.json을 승인해 새 작업으로 렌더링 (AI 호출 없음)')
+            accept.add_argument('--job',type=Path,required=True)
             prompt=sub.add_parser('prompt')
             choice=prompt.add_mutually_exclusive_group(required=True)
             choice.add_argument('--facts',type=Path)
@@ -67,7 +69,9 @@ def main(argv=None):
                 terms=json.loads(args.review_terms.read_text(encoding='utf-8'))
                 if not isinstance(terms,list) or not all(isinstance(t,str) and t for t in terms):
                     raise ValueError('review-terms must be a JSON array of nonempty strings')
-            if args.command=='prompt':
+            if args.command=='accept':
+                result=accept_job(args.job)
+            elif args.command=='prompt':
                 if args.from_job:
                     if not args.regenerate: parser.error('--from-job requires --regenerate')
                     result=regenerate_job(args.from_job)

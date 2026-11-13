@@ -152,7 +152,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                 item['png'] = f'page-{index:03}{draft_suffix}.png'
                 crop.save(job / item['png'], icc_profile=profile)
             pages.append(item)
-        manifest = {'needs_review': bool(needs_review), 'review_accepted': bool(needs_review and accept_review), 'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
+        manifest = {'needs_review': bool(needs_review), 'review_accepted': bool(accept_review), 'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],
