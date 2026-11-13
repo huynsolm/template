@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "width": 860,
+  "height": 3154,
+  "max_height": 1800,
+  "pages": [
+    {
+      "file": "page-001.jpg",
+      "width": 860,
+      "height": 1768,
+      "top": 0,
+      "bottom": 1768,
+      "png": "page-001.png"
+    },
+    {
+      "file": "page-002.jpg",
+      "width": 860,
+      "height": 1386,
+      "top": 1768,
+      "bottom": 3154,
+      "png": "page-002.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "hero-1",
+      "top": 0,
+      "bottom": 849
+    },
+    {
+      "id": "pain-1",
+      "top": 849,
+      "bottom": 1127
+    },
+    {
+      "id": "solution-1",
+      "top": 1127,
+      "bottom": 1383
+    },
+    {
+      "id": "features-1",
+      "top": 1383,
+      "bottom": 1768
+    },
+    {
+      "id": "how-1",
+      "top": 1768,
+      "bottom": 2051
+    },
+    {
+      "id": "review-1",
+      "top": 2051,
+      "bottom": 2368
+    },
+    {
+      "id": "spec-1",
+      "top": 2368,
+      "bottom": 2670
+    },
+    {
+      "id": "faq-1",
+      "top": 2670,
+      "bottom": 2943
+    },
+    {
+      "id": "notice-1",
+      "top": 2943,
+      "bottom": 3154
+    }
+  ],
+  "horizontal_overflow": false,
+  "font_loaded": true,
+  "network_requests": [],
+  "versions": {
+    "python": "3.12.14",
+    "chromium": "156.0.8078.79",
+    "pydantic": "2.14.3",
+    "jinja2": "3.1.6",
+    "playwright": "1.65.1",
+    "pillow": "13.0.0"
+  },
+  "elapsed_seconds": 7.485
+}

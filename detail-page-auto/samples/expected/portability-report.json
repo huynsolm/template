@@ -1,0 +1,22 @@
+{
+  "html_unchanged": true,
+  "html_sha256": "d4fb4482e0f0c35b3c0a017eda6cc6896af79cc82429eabdbfc159da92b0628e",
+  "relative_assets": [
+    "assets/theme.css",
+    "assets/fonts/NotoSansCJK-Regular.ttc",
+    "assets/image-000.png"
+  ],
+  "relative_assets_exist": true,
+  "relocated_capture": {
+    "status": "passed",
+    "font_loaded": true,
+    "width": 860,
+    "height": 3154,
+    "pixel_identical_to_expected_pngs": true,
+    "external_requests": []
+  },
+  "direct_file_url": {
+    "status": "blocked_by_browser_policy",
+    "error": "net::ERR_BLOCKED_BY_ADMINISTRATOR"
+  }
+}

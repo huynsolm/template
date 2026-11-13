@@ -1,0 +1,1 @@
+<h2>상품 특징</h2>{% for item in section["items"] %}<h3>{{ item.title }}</h3><p>{{ item.desc }}</p>{% if item.get("image") %}<img src="{{ item.image }}" alt="{{ item.title }}">{% endif %}{% endfor %}

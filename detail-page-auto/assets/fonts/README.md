@@ -1,0 +1,1 @@
+NotoSansCJK-Regular.ttc는 이 환경에 사전 설치된 Debian fonts-noto-cjk 패키지의 파일을 수정 없이 복사했습니다. 외부 다운로드를 하지 않았습니다. 폰트는 SIL Open Font License 1.1로 배포됩니다. LICENSE.txt는 해당 패키지의 저작권·라이선스 원문이며 Debian 패키징 파일에 대한 별도 라이선스도 구분되어 있습니다.
