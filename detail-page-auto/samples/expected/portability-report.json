@@ -7,12 +7,13 @@
     "assets/image-000.png"
   ],
   "relative_assets_exist": true,
+  "expected_geometry_matches": true,
   "relocated_capture": {
     "status": "passed",
     "font_loaded": true,
     "width": 860,
     "height": 3154,
-    "pixel_identical_to_expected_pngs": true,
+    "pixel_identical_before_after_move": true,
     "external_requests": []
   },
   "direct_file_url": {

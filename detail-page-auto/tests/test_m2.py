@@ -46,7 +46,7 @@ def test_extract_invalid(text):
     with pytest.raises(ValueError): extract_json(text)
 
 
-def test_workflow_and_render(tmp_path,facts,answer):
+def test_workflow_and_render(tmp_path,facts,answer,capsys):
     from core.workflow import create_job,ingest_job
     from core.schema import Document
     job=create_job(facts,ROOT/'samples',tmp_path)
@@ -60,6 +60,12 @@ def test_workflow_and_render(tmp_path,facts,answer):
     manifest=json.loads((job/'manifest.json').read_text())
     assert manifest['attempts']==1 and manifest['method']=='paste'
     assert manifest['source_label']=='테스트 답변'
+    assert manifest['needs_review'] is False
+    assert manifest['review_accepted'] is False
+    assert 'WARNING' not in capsys.readouterr().err
+    rendered=json.loads(next((job/'rendered').glob('job-*/manifest.json')).read_text())
+    assert rendered['needs_review'] is False
+    assert not list((job/'rendered').glob('job-*/*.DRAFT.*'))
 
 @pytest.mark.parametrize('case',['long','missing','extra','review','price'])
 def test_repair_then_success(tmp_path,facts,answer,case):
@@ -214,3 +220,43 @@ def test_locked_custom_image_is_preserved(tmp_path,facts,answer):
     ingest_job(child,answer)
     assert (child/'manual.png').read_bytes()==(job/'manual.png').read_bytes()
     assert json.loads((child/'draft.json').read_text())['sections'][0]==doc['sections'][0]
+
+
+@pytest.mark.parametrize('accept_review',[False,True])
+def test_review_render_requires_explicit_acceptance(tmp_path,facts,answer,capsys,accept_review):
+    from core.workflow import create_job,ingest_job
+    from core.ingest import extract_json
+    data=extract_json(answer)
+    data['hero']['headline']='100% 인증 효과'
+    data['hero']['fact_ids']=['missing']
+    job=create_job(facts,ROOT/'samples',tmp_path)
+    ingest_job(job,json.dumps(data,ensure_ascii=False),render_output=True,accept_review=accept_review)
+    warning=capsys.readouterr().err
+    assert '검수 필요' in warning and 'WARNING' in warning
+    manifest=json.loads((job/'manifest.json').read_text())
+    assert manifest['needs_review'] is True
+    assert manifest['review_accepted'] is accept_review
+    output=next((job/'rendered').glob('job-*'))
+    rendered=json.loads((output/'manifest.json').read_text())
+    assert rendered['needs_review'] is True
+    assert rendered['review_accepted'] is accept_review
+    suffix='' if accept_review else '.DRAFT'
+    for part in rendered['pages']:
+        assert part['file'].endswith(suffix+'.jpg')
+        assert part['png'].endswith(suffix+'.png')
+        assert (output/part['file']).is_file()
+        assert (output/part['png']).is_file()
+    assert not list(output.glob('*.DRAFT.jpg' if accept_review else '*[0-9].jpg'))
+
+
+def test_cli_accept_review_option(tmp_path,facts,answer):
+    from core.workflow import create_job
+    from core.ingest import extract_json
+    job=create_job(facts,ROOT/'samples',tmp_path)
+    data=extract_json(answer); data['hero']['fact_ids']=['unknown']
+    path=tmp_path/'answer.txt'; path.write_text(json.dumps(data,ensure_ascii=False))
+    result=subprocess.run([sys.executable,str(ROOT/'cli.py'),'ingest','--job',str(job),'--answer',str(path),'--render','--accept-review'],capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+    assert 'WARNING' in result.stderr
+    assert next((job/'rendered').glob('job-*/page-001.jpg')).exists()
+    assert json.loads((job/'manifest.json').read_text())['review_accepted'] is True

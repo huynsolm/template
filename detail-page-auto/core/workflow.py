@@ -1,6 +1,7 @@
 """File-based M2 jobs with immutable inputs, bounded attempts and regeneration."""
 import json
 import shutil
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,7 +64,7 @@ def validation_errors(exc):
     return [{'field_path':'answer','reason':str(exc),'allowed_range':'one JSON object conforming to prompt JSON Schema'}]
 
 
-def ingest_job(job: Path, answer: str, source_label='', render_output=False, terms=DEFAULT_TERMS):
+def ingest_job(job: Path, answer: str, source_label='', render_output=False, terms=DEFAULT_TERMS, accept_review=False):
     job=Path(job)
     manifest=read_json(job/'manifest.json')
     if (job/'draft.json').exists():
@@ -89,12 +90,15 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         write_json(stage/'draft.json',document.model_dump(exclude_none=True))
         write_json(stage/'review.json',review)
         write_json(stage/'copy.json',parsed)
+        needs_review=bool(review)
         if render_output:
-            render(document,job,stage/'rendered',png=True)
+            if needs_review:
+                print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 --accept-review로 새 작업을 실행하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
+            render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review)
         for path in stage.iterdir(): path.replace(job/path.name)
         stage.rmdir()
         write_json(job/'attempts'/f'errors-{attempt}.json',[])
-        manifest.update(status='complete',updated_at=now())
+        manifest.update(status='complete',updated_at=now(),needs_review=needs_review,review_accepted=bool(needs_review and accept_review))
         write_json(job/'manifest.json',manifest)
         return job
     except (ValueError,OSError) as exc:
@@ -143,13 +147,13 @@ def regenerate_job(previous: Path):
         raise
 
 
-def generate_job(facts, images, output, provider, max_attempts=3, source_label='', render_output=False, terms=DEFAULT_TERMS):
+def generate_job(facts, images, output, provider, max_attempts=3, source_label='', render_output=False, terms=DEFAULT_TERMS, accept_review=False):
     job=create_job(facts,images,output,max_attempts=max_attempts,method=f'cli:{provider.name}')
     for attempt in range(max_attempts):
         prompt=(job/('prompt.md' if attempt==0 else 'fix-prompt.md')).read_text(encoding='utf-8')
         answer=provider.generate(prompt)
         try:
-            return ingest_job(job,answer,source_label=source_label,render_output=render_output,terms=terms)
+            return ingest_job(job,answer,source_label=source_label,render_output=render_output,terms=terms,accept_review=accept_review)
         except ValueError:
             if attempt+1==max_attempts: raise
     return job

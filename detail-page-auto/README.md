@@ -61,7 +61,7 @@ HTML의 이미지·CSS 경로와 CSS의 폰트 경로는 모두 번들 내부의
 .venv/bin/python cli.py --input outputs/job-EXAMPLE/input.json --images outputs/job-EXAMPLE --output outputs
 ```
 
-테스트는 실제 Chromium으로 한글·긴 문구·선택 이미지 생략·높이 제한·HTML 이스케이프·외부 요청 차단을 확인합니다. 이동한 HTML의 전체 재촬영과 PNG 조각을 픽셀 단위로 비교하고 JPG의 ICC·폭·높이·순서를 검사합니다. 검증은 샘플 디자인 기준이며 특정 판매 플랫폼 업로드 규격을 보장하지 않습니다.
+테스트는 실제 Chromium으로 한글·긴 문구·선택 이미지 생략·높이 제한·HTML 이스케이프·외부 요청 차단을 확인합니다. 같은 실행에서 이동 전후 HTML 재촬영 결과를 픽셀 단위로 비교하고, 커밋 PNG와는 크기·분할 위치만 비교하며 JPG의 ICC·폭·높이·순서를 검사합니다. 검증은 샘플 디자인 기준이며 특정 판매 플랫폼 업로드 규격을 보장하지 않습니다.
 
 ## 저장소에 포함한 기대 결과와 이동 검증
 
@@ -71,7 +71,7 @@ HTML의 이미지·CSS 경로와 CSS의 폰트 경로는 모두 번들 내부의
 .venv/bin/python tools/check_portability.py --report samples/expected/portability-report.json
 ```
 
-이 명령은 샘플을 임시 폴더에 복사한 뒤 공백과 한글이 있는 다른 경로로 이동합니다. HTML 바이트가 바뀌지 않았는지, 이미지·CSS·폰트 상대경로 파일이 모두 존재하는지 확인하고, 외부 연결 없는 실제 Chromium 재촬영을 기대 PNG들과 픽셀 단위로 비교합니다. 이어 `file://`로 page.html을 직접 열기를 별도로 시도합니다. `direct_file_url.status`가 `blocked_by_browser_policy`라면 직접 열기 검증은 통과가 아니라 환경 정책에 의한 차단입니다. 이 결과와 재촬영 성공을 구분해 보고합니다.
+이 명령은 샘플을 임시 폴더에 복사한 뒤 공백과 한글이 있는 다른 경로로 이동합니다. HTML 바이트가 바뀌지 않았는지, 이미지·CSS·폰트 상대경로 파일이 모두 존재하는지 확인하고, 외부 연결 없이 같은 Chromium 버전으로 이동 전과 이동 후를 실제 재촬영해 픽셀 단위로 비교합니다. 커밋된 PNG의 픽셀 색상은 비교하지 않으며 크기·섹션 경계·분할 위치만 확인합니다. 따라서 Chromium 버전별 안티앨리어싱 차이를 파일 이동 오류로 오인하지 않습니다. 이어 `file://`로 page.html을 직접 열기를 별도로 시도합니다. `direct_file_url.status`가 `blocked_by_browser_policy`라면 직접 열기 검증은 통과가 아니라 환경 정책에 의한 차단입니다. 이 결과와 재촬영 성공을 구분해 보고합니다.
 
 렌더러의 가상 주소는 `http://127.0.0.1:18600/page.html`입니다. Playwright `page.route('**/*', ...)`가 요청을 가로채고, URL 경로를 현재 결과 폴더 아래 파일로 대응시켜 `route.fulfill(body=...)`로 바이트와 MIME 타입을 전달합니다. 이 포트에 서버를 띄우거나 접속하지 않습니다. CSS가 참조하는 `fonts/...`는 `assets/theme.css`를 기준으로, HTML의 `assets/...`는 page.html을 기준으로 브라우저가 해석합니다. 폴더 밖 경로·다른 호스트 요청은 중단하고, context도 offline으로 설정합니다. HTML을 data URL로 바꾸거나 이미지·폰트 경로를 절대경로로 주입하지 않습니다.
 
@@ -140,3 +140,15 @@ HTML의 이미지·CSS 경로와 CSS의 폰트 경로는 모두 번들 내부의
 ```
 
 M1과 M2 전체를 실행하며 실제 Chromium을 사용합니다. AI 답변은 고정 파일로, CLI는 임시 가짜 실행 파일로 검증하므로 실제 AI 서비스나 유료 API를 호출하지 않습니다. 의존성 추가는 없습니다. 프롬프트 버전 `copy_v1`과 생성 방식·출처 라벨·시도 수·시각은 작업 `manifest.json`에 남깁니다. 배포 후 프롬프트 내용을 바꾸면 `copy_v2.md` 등 새 버전을 만들어야 합니다.
+
+### 검수 항목이 있는 렌더링과 명시적 승인
+
+`ingest --render` 또는 `generate --render`에서 `review.json`이 비어 있지 않으면 콘솔 표준 오류에 큰 `WARNING: 검수 필요` 경고와 항목 수·검수 파일 경로가 표시됩니다. 기본 이미지 이름은 `page-001.DRAFT.jpg`, `page-001.DRAFT.png`입니다. 작업 manifest와 렌더링 manifest 모두 `needs_review: true`, `review_accepted: false`를 기록하고 파일 목록도 실제 DRAFT 이름을 가리킵니다.
+
+내용을 사람이 확인하고 일반 파일명으로 출력하려면 새 작업의 ingest/generate 실행에 `--accept-review`를 명시하세요.
+
+```bash
+.venv/bin/python cli.py ingest --job outputs/job-EXAMPLE --answer answer.txt --render --accept-review
+```
+
+승인 시 `page-001.jpg`/`.png`를 사용하고 `review_accepted: true`를 기록합니다. 검수 항목이 남아 있다는 사실을 보존하기 위해 `needs_review`는 계속 `true`이며 `review.json`과 경고도 유지됩니다. 이미 완료된 작업은 덮어쓰지 않으므로, 초안을 먼저 생성했다면 `prompt --from-job ... --regenerate`로 새 작업을 만든 뒤 승인해 주세요. 검수 항목이 없으면 승인 옵션 없이도 일반 파일명을 쓰며 `needs_review`는 `false`입니다.

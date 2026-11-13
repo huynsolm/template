@@ -191,7 +191,7 @@ def test_expected_sample_hydrates_shared_font():
     from tools.check_portability import check
     assert not (ROOT/'samples/expected/assets/fonts/NotoSansCJK-Regular.ttc').exists()
     result=check(ROOT/'samples/expected')
-    assert result['relocated_capture']['pixel_identical_to_expected_pngs']
+    assert result['relocated_capture']['pixel_identical_before_after_move']
     assert result['relocated_capture']['font_loaded']
     assert result['relative_assets_exist']
 
@@ -209,3 +209,29 @@ def test_chromium_resolution_order(monkeypatch,available,expected):
     monkeypatch.setattr(Path,'is_file',lambda path: str(path)=={'playwright':'/playwright/chrome','bundle':'/opt/pw-browsers/chromium'}.get(available))
     monkeypatch.setattr(shutil,'which',lambda name:'/usr/bin/chromium')
     assert chromium_path('/playwright/chrome')==expected
+
+
+def test_portability_ignores_committed_pixel_colors(tmp_path):
+    from tools.check_portability import check
+    sample=tmp_path/'expected'
+    shutil.copytree(ROOT/'samples/expected',sample)
+    # Simulate another Chromium rasterizer; geometry remains the same.
+    for path in sample.glob('page-*.png'):
+        with Image.open(path) as png: size=png.size
+        Image.new('RGB',size,'magenta').save(path)
+    result=check(sample)
+    assert result['relocated_capture']['pixel_identical_before_after_move']
+    assert result['expected_geometry_matches']
+
+
+@pytest.mark.parametrize('case',['size','split'])
+def test_expected_geometry_rejects_changes(tmp_path,case):
+    from tools.check_portability import validate_expected_geometry
+    sample=tmp_path/'expected'; shutil.copytree(ROOT/'samples/expected',sample)
+    manifest=json.loads((sample/'manifest.json').read_text())
+    geometry={'sections':manifest['sections'],'height':manifest['height']}
+    if case=='size':
+        Image.new('RGB',(1,1)).save(sample/manifest['pages'][0]['png'])
+    else:
+        manifest['pages'][0]['bottom']-=1
+    with pytest.raises(AssertionError): validate_expected_geometry(sample,manifest,(860,manifest['height']),geometry)

@@ -29,6 +29,24 @@ class References(HTMLParser):
                 self.urls.append(value)
 
 
+def validate_expected_geometry(sample: Path, manifest: dict, image_size, geometry: dict):
+    """Committed PNGs are a geometry fixture, not a rasterizer fingerprint."""
+    assert image_size == (manifest['width'], manifest['height'])
+    assert geometry['height'] == manifest['height']
+    assert geometry['sections'] == manifest['sections']
+    cuts = [0]
+    for section in geometry['sections']:
+        if section['bottom'] - cuts[-1] > manifest['max_height']:
+            cuts.append(section['top'])
+    cuts.append(image_size[1])
+    assert len(manifest['pages']) == len(cuts)-1
+    for part, top, bottom in zip(manifest['pages'], cuts, cuts[1:]):
+        assert (part['top'], part['bottom']) == (top, bottom)
+        assert (part['width'], part['height']) == (image_size[0], bottom-top)
+        with Image.open(sample / part['png']) as png:
+            assert png.size == (part['width'], part['height'])
+
+
 def check(source: Path):
     with tempfile.TemporaryDirectory(prefix='m1-portability-') as temporary:
         copied = Path(temporary) / 'original'
@@ -36,6 +54,7 @@ def check(source: Path):
         font = copied / 'assets/fonts/NotoSansCJK-Regular.ttc'
         if not font.exists():
             shutil.copyfile(ROOT / 'assets/fonts/NotoSansCJK-Regular.ttc', font)
+        before_image, before_geometry = capture(copied / 'page.html')
         moved = Path(temporary) / '다른 경로 with spaces'
         shutil.move(copied, moved)
         html = moved / 'page.html'
@@ -57,14 +76,10 @@ def check(source: Path):
                     resolve(path.parent, asset)
         image, geometry = capture(html)
         manifest = json.loads((moved / 'manifest.json').read_text())
-        expected = Image.new('RGB', (manifest['width'], manifest['height']))
-        top = 0
-        for part in manifest['pages']:
-            with Image.open(moved / part['png']) as png:
-                expected.paste(png.convert('RGB'), (0, top))
-            top += part['height']
-        assert image.size == expected.size
-        assert ImageChops.difference(image, expected).getbbox() is None
+        assert image.size == before_image.size
+        assert geometry['sections'] == before_geometry['sections']
+        assert ImageChops.difference(image, before_image).getbbox() is None
+        validate_expected_geometry(moved, manifest, image.size, geometry)
         direct = {}
         with sync_playwright() as pw:
             browser = pw.chromium.launch(executable_path=chromium_path(pw.chromium.executable_path))
@@ -89,10 +104,11 @@ def check(source: Path):
             'html_sha256': hashlib.sha256(original_bytes).hexdigest(),
             'relative_assets': checked,
             'relative_assets_exist': True,
+            'expected_geometry_matches': True,
             'relocated_capture': {
                 'status': 'passed', 'font_loaded': geometry['font_loaded'],
                 'width': image.width, 'height': image.height,
-                'pixel_identical_to_expected_pngs': True,
+                'pixel_identical_before_after_move': True,
                 'external_requests': geometry['network_requests'],
             },
             'direct_file_url': direct,

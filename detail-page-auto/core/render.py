@@ -101,7 +101,7 @@ def capture(html: Path, max_height: int = 4000):
         raise ValueError(f'Chromium asset loading/rendering failed: {exc}') from exc
 
 
-def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False) -> Path:
+def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False) -> Path:
     if type(max_height) is not int or not 1 <= max_height <= 30000:
         raise ValueError('max_height must be an integer in 1..30000')
     started = time.perf_counter()
@@ -140,18 +140,19 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         cuts.append(full.height)
         profile = ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes()
         pages = []
+        draft_suffix = '.DRAFT' if needs_review and not accept_review else ''
         for index, (top, bottom) in enumerate(zip(cuts, cuts[1:]), 1):
             if not 0 < bottom-top <= max_height:
                 raise ValueError('output page exceeds maximum height or is empty')
             crop = full.crop((0, top, 860, bottom))
-            filename = f'page-{index:03}.jpg'
+            filename = f'page-{index:03}{draft_suffix}.jpg'
             crop.save(job / filename, quality=90, icc_profile=profile)
             item = {'file': filename, 'width': 860, 'height': bottom-top, 'top': top, 'bottom': bottom}
             if png:
-                item['png'] = f'page-{index:03}.png'
+                item['png'] = f'page-{index:03}{draft_suffix}.png'
                 crop.save(job / item['png'], icc_profile=profile)
             pages.append(item)
-        manifest = {'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
+        manifest = {'needs_review': bool(needs_review), 'review_accepted': bool(needs_review and accept_review), 'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],

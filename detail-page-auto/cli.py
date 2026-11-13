@@ -47,6 +47,7 @@ def main(argv=None):
             ingest.add_argument('--answer',type=Path,required=True)
             ingest.add_argument('--source-label',default='')
             ingest.add_argument('--render',action='store_true')
+            ingest.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
             ingest.add_argument('--review-terms',type=Path)
             generate=sub.add_parser('generate')
             generate.add_argument('--facts',type=Path,required=True)
@@ -59,6 +60,7 @@ def main(argv=None):
             generate.add_argument('--source-label',default='')
             generate.add_argument('--review-terms',type=Path)
             generate.add_argument('--render',action='store_true')
+            generate.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
             args=parser.parse_args(argv)
             terms=DEFAULT_TERMS
             if getattr(args,'review_terms',None):
@@ -76,11 +78,11 @@ def main(argv=None):
             elif args.command=='ingest':
                 from core.providers import PasteProvider
                 answer=PasteProvider(args.answer).generate('')
-                result=ingest_job(args.job,answer,source_label=args.source_label,render_output=args.render,terms=terms)
+                result=ingest_job(args.job,answer,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review)
             else:
                 from core.providers import CliProvider
                 provider=CliProvider(args.provider,config_path=args.providers_config,timeout=args.timeout)
-                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms)
+                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review)
         print(result.resolve())
         return 0
     except (ValueError,OSError) as exc:
