@@ -101,9 +101,12 @@ def capture(html: Path, max_height: int = 4000):
         raise ValueError(f'Chromium asset loading/rendering failed: {exc}') from exc
 
 
-def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False) -> Path:
+def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic") -> Path:
     if type(max_height) is not int or not 1 <= max_height <= 30000:
         raise ValueError('max_height must be an integer in 1..30000')
+    from .themes import theme_styles
+    styles = theme_styles(theme, document.product.brand_color)
+    needs_review = bool(needs_review or styles['contrast_reviews'])
     started = time.perf_counter()
     images = collect_images(document, image_dir)
     output_dir = Path(output_dir)
@@ -113,7 +116,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         assets = job / 'assets'
         assets.mkdir()
         shutil.copytree(ROOT / 'assets/fonts', assets / 'fonts')
-        shutil.copy(ROOT / 'templates/theme.css', assets / 'theme.css')
+        (assets / 'theme.css').write_text(styles['css'], encoding='utf-8')
         mapping = {}
         for index, (name, source) in enumerate(images.items()):
             target = f'assets/image-{index:03}{source.suffix.lower()}'
@@ -127,7 +130,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
             return value
         data = rewrite(data)
         env = Environment(loader=FileSystemLoader(ROOT / 'templates'), autoescape=select_autoescape(['html']), undefined=StrictUndefined)
-        (job / 'page.html').write_text(env.get_template('page.html').render(**data), encoding='utf-8')
+        (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=styles['variables']), encoding='utf-8')
         # The bundled JSON references bundled images, so it can be rerun with --images JOB.
         (job / 'input.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         full, geometry = capture(job / 'page.html', max_height)
@@ -152,7 +155,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                 item['png'] = f'page-{index:03}{draft_suffix}.png'
                 crop.save(job / item['png'], icc_profile=profile)
             pages.append(item)
-        manifest = {'needs_review': bool(needs_review), 'review_accepted': bool(accept_review), 'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
+        manifest = {'theme': theme, 'contrast_adjustments': styles['contrast_adjustments'], 'contrast_reviews': styles['contrast_reviews'], 'needs_review': bool(needs_review), 'review_accepted': bool(accept_review), 'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],

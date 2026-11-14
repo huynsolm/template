@@ -8,6 +8,7 @@ from core.schema import Document
 from core.facts import ProductFacts
 from core.workflow import create_job, ingest_job, regenerate_job, generate_job, accept_job
 from core.assemble import DEFAULT_TERMS
+from core.themes import THEME_IDS
 
 
 def read_facts(path):
@@ -21,9 +22,10 @@ def m1(argv):
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--max-height',type=int,default=4000)
     parser.add_argument('--png',action='store_true')
+    parser.add_argument('--theme',choices=THEME_IDS,default='classic')
     args=parser.parse_args(argv)
     document=Document.model_validate_json(args.input.read_text(encoding='utf-8'))
-    return render(document,args.images,args.output,args.max_height,args.png)
+    return render(document,args.images,args.output,args.max_height,args.png,theme=args.theme)
 
 
 def main(argv=None):
@@ -67,6 +69,8 @@ def main(argv=None):
             generate.add_argument('--review-terms',type=Path)
             generate.add_argument('--render',action='store_true')
             generate.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
+            for themed in (ingest,generate,accept):
+                themed.add_argument('--theme',choices=THEME_IDS,default=None)
             args=parser.parse_args(argv)
             terms=None
             if getattr(args,'review_terms',None):
@@ -81,7 +85,7 @@ def main(argv=None):
                     print(result.resolve())
                     raise ValueError('배경 제거 실패: 기본 처리본은 출력 작업 폴더에 유지했습니다.')
             elif args.command=='accept':
-                result=accept_job(args.job)
+                result=accept_job(args.job,theme=args.theme)
             elif args.command=='prompt':
                 if args.from_job:
                     if not args.regenerate: parser.error('--from-job requires --regenerate')
@@ -93,11 +97,11 @@ def main(argv=None):
             elif args.command=='ingest':
                 from core.providers import PasteProvider
                 answer=PasteProvider(args.answer).generate('')
-                result=ingest_job(args.job,answer,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review)
+                result=ingest_job(args.job,answer,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme)
             else:
                 from core.providers import CliProvider
                 provider=CliProvider(args.provider,config_path=args.providers_config,timeout=args.timeout)
-                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review)
+                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme)
         print(result.resolve())
         return 0
     except (ValueError,OSError) as exc:

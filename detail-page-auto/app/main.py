@@ -1,6 +1,5 @@
 """Single-user local UI. Business rules and exports live in core/."""
 import copy
-import hashlib
 import json
 import os
 import sys
@@ -17,6 +16,8 @@ if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from core.facts import ProductFacts
 from core.workflow import create_job,ingest_job,regenerate_job,generate_job,accept_job,read_json
 from core.uploads import stage_uploads
+from core.themes import THEME_IDS
+from core.editor import bundle_matches
 
 STEPS=['① 상품 정보','② 프롬프트','③ 답변 붙여넣기','④ 검수·수정','⑤ 미리보기','⑥ 승인','⑦ 다운로드']
 KINDS={'스펙':'spec','특징':'feature','사용법':'usage','주장':'claim','기타':'other'}
@@ -67,6 +68,7 @@ def open_job(path):
     form_load(data,job)
     S['job']=str(job); S['bundle']=''; S['last_error']=''
     manifest=read_json(job/'manifest.json')
+    S['theme_choice']=manifest.get('theme','classic')
     if manifest.get('review_accepted') and manifest.get('rendered_job'):
         S['bundle']=str(job/manifest['rendered_job'])
     elif (job/'preview.json').exists():
@@ -74,8 +76,7 @@ def open_job(path):
         bundle=job/info['bundle']
         if bundle.is_dir(): S['bundle']=str(bundle)
     if S['bundle'] and (job/'draft.json').exists():
-        expected=hashlib.sha256((job/'draft.json').read_bytes()).hexdigest()
-        if read_json(Path(S['bundle'])/'manifest.json').get('draft_sha256')!=expected: S['bundle']=''
+        if not bundle_matches(job,Path(S['bundle'])): S['bundle']=''
 
 
 def error_text(exc):
@@ -418,6 +419,8 @@ def edit_page(job):
 def display_bundle(bundle):
     manifest=read_json(bundle/'manifest.json')
     st.caption('작업 버전 ID: '+manifest['job_id'])
+    if manifest.get('contrast_adjustments'):
+        st.info('브랜드 색 대비 보정됨')
     if not manifest.get('review_accepted'):
         st.warning('DRAFT · 승인 전 미리보기입니다. 검수 항목과 문구를 확인하세요.')
     if manifest.get('needs_review'):
@@ -430,11 +433,21 @@ def display_bundle(bundle):
 def preview_page(job):
     from core.editor import preview_job
     st.header('⑤ 미리보기')
+    current_theme=read_json(job/'manifest.json').get('theme','classic')
+    if 'theme_choice' not in S: S['theme_choice']=current_theme
+    selected=st.selectbox('디자인 테마',THEME_IDS,key='theme_choice')
+    if selected!=current_theme:
+        ok,bundle=perform('테마 미리보기 렌더링',lambda:preview_job(job,theme=selected))
+        if ok:
+            S['bundle']=str(bundle)
+            for key in list(S):
+                if key.startswith('check_'): del S[key]
+        else:
+            return
     if st.button('저장된 문구로 미리보기 생성',key='preview',disabled=S.get('busy',False)):
-        current_hash=hashlib.sha256((job/'draft.json').read_bytes()).hexdigest()
         bundle=Path(S['bundle']) if S.get('bundle') else None
-        if not bundle or not (bundle/'manifest.json').exists() or read_json(bundle/'manifest.json').get('draft_sha256')!=current_hash:
-            ok,bundle=perform('미리보기 렌더링',lambda:preview_job(job))
+        if bundle is None or not bundle_matches(job,bundle):
+            ok,bundle=perform('미리보기 렌더링',lambda:preview_job(job,theme=selected))
             if not ok: st.rerun()
             S['bundle']=str(bundle)
         st.rerun()
@@ -445,6 +458,13 @@ def preview_page(job):
 
 def approval_page(job):
     st.header('⑥ 승인')
+    theme=read_json(job/'manifest.json').get('theme','classic')
+    context=(str(job),theme)
+    if S.get('approval_context')!=context:
+        for key in list(S):
+            if key.startswith('check_'): del S[key]
+        S['approval_context']=context
+    st.caption('선택한 테마: '+theme)
     labels=['사실 일치 확인','후기 출처·허가 확인','효능·수치·광고 표현 확인','대상 플랫폼 업로드 규격은 별도 확인 필요함을 인지','상품 사진의 형태·색상이 실제와 다르게 바뀌지 않았는지 확인']
     checks=[st.checkbox(label,key=f'check_{job.name}_{i}') for i,label in enumerate(labels)]
     if st.button('모두 확인했으며 승인',key='accept',type='primary',disabled=not all(checks) or S.get('busy',False)):
@@ -460,9 +480,8 @@ def download_page(job):
     if not S.get('bundle'):
         st.info('⑤에서 미리보기를 만들거나 ⑥에서 승인해 주세요.'); return
     bundle=Path(S['bundle'])
-    current=hashlib.sha256((job/'draft.json').read_bytes()).hexdigest()
-    if read_json(bundle/'manifest.json').get('draft_sha256')!=current:
-        st.warning('저장된 문구가 변경되었습니다. ⑤에서 새 미리보기를 만들어 주세요.'); return
+    if not bundle_matches(job,bundle):
+        st.warning('저장된 문구 또는 테마가 변경되었습니다. ⑤에서 새 미리보기를 만들어 주세요.'); return
     manifest=read_json(bundle/'manifest.json')
     ok,data=perform('ZIP 준비',lambda:build_zip(bundle))
     if ok:

@@ -1,0 +1,15 @@
+id = "classic"
+name = "기본"
+description = "기존의 차분한 녹색 상세페이지"
+
+[tokens]
+background = "#ffffff"
+alternate = "#f1f6f1"
+hero = "#e5eee7"
+text = "#172c2a"
+muted = "#465650"
+border = "#dce5de"
+padding_y = 48
+padding_x = 56
+font_scale = 1.0
+radius = 16

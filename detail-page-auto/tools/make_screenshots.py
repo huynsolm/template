@@ -108,10 +108,32 @@ def make_screenshots(tmp_path: Path, images: Path, artifacts: Path):
     return json.loads((artifacts/'browser-result.json').read_text())
 
 
+def make_theme_screenshots(images: Path, artifacts: Path):
+    """Explicit-only documentation captures; no test writes tracked images."""
+    from core.render import render, capture
+    from core.schema import Document
+    from core.themes import THEME_IDS
+    images.mkdir(parents=True,exist_ok=True)
+    artifacts.mkdir(parents=True,exist_ok=True)
+    document=Document.model_validate_json((ROOT/'samples/product.json').read_text())
+    results={}
+    for theme in THEME_IDS:
+        bundle=render(document,ROOT/'samples',artifacts,theme=theme)
+        full,_=capture(bundle/'page.html')
+        target=images/('theme-'+theme+'.png')
+        full.save(target)
+        results[theme]=str(target)
+    return results
+
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description='샘플 화면 캡처를 명시적으로 갱신합니다. pytest에서는 임시 경로만 사용합니다.')
     parser.add_argument('--images',type=Path,default=ROOT/'docs/images')
     parser.add_argument('--output',type=Path,default=ROOT/'outputs/m4-browser')
+    parser.add_argument('--themes-only',action='store_true',help='세 테마의 상세페이지 캡처만 생성')
     args=parser.parse_args()
+    if args.themes_only:
+        print(json.dumps(make_theme_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
+        sys.exit(0)
     print(json.dumps(make_screenshots(args.output/'work',args.images,args.output),ensure_ascii=False,indent=2))

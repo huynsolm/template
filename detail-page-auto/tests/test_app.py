@@ -252,3 +252,78 @@ def test_missing_background_option_disabled(monkeypatch,tmp_path):
     assert next(c for c in app.checkbox if '배경 제거' in c.label).disabled
     app.button(key='create').click().run()
     assert app.session_state['stage']=='② 프롬프트'
+
+
+def test_theme_change_preserves_snapshot_and_uses_selected_theme(monkeypatch,tmp_path):
+    app=start(monkeypatch,tmp_path)
+    app.color_picker(key='product_brand_color').set_value('#FFFF00')
+    app.button(key='create').click().run()
+    job=Path(app.session_state['job'])
+    stage(app,2)
+    app.text_area(key='answer_text').set_value((ROOT/'samples/answer.txt').read_text())
+    app.button(key='ingest').click().run()
+    stage(app,4)
+    app.button(key='preview').click().run(timeout=60)
+    first=Path(app.session_state['bundle'])
+    before=(first/'manifest.json').read_bytes()
+    assert any('브랜드 색 대비 보정됨' in i.value for i in app.info)
+    app.selectbox(key='theme_choice').set_value('bold').run(timeout=60)
+    assert not app.exception
+    second=Path(app.session_state['bundle'])
+    assert second!=first and first.is_dir()
+    assert (first/'manifest.json').read_bytes()==before
+    assert json.loads((second/'manifest.json').read_text())['theme']=='bold'
+    stage(app,6)
+    with zipfile.ZipFile(io.BytesIO(app.session_state['download_zip'])) as z:
+        assert json.loads(z.read('manifest.json'))['theme']=='bold'
+    stage(app,5)
+    for i in range(5): app.checkbox(key=f'check_{job.name}_{i}').check()
+    app.run()
+    stage(app,4)
+    app.selectbox(key='theme_choice').set_value('minimal').run(timeout=60)
+    stage(app,5)
+    assert app.button(key='accept').disabled
+    for i in range(5): app.checkbox(key=f'check_{job.name}_{i}').check()
+    app.run();app.button(key='accept').click().run(timeout=60)
+    assert not app.exception
+    with zipfile.ZipFile(io.BytesIO(app.session_state['download_zip'])) as z:
+        assert json.loads(z.read('manifest.json'))['theme']=='minimal'
+    restarted=AppTest.from_file(str(ROOT/'app/main.py'),default_timeout=60).run()
+    restarted.selectbox(key='resume_job').set_value(app.session_state['job'])
+    restarted.button(key='resume').click().run()
+    stage(restarted,4)
+    assert restarted.selectbox(key='theme_choice').value=='minimal'
+
+
+def test_download_rejects_theme_changed_outside_open_ui(monkeypatch,tmp_path):
+    from core.editor import preview_job
+    app=start(monkeypatch,tmp_path)
+    app.button(key='create').click().run()
+    job=Path(app.session_state['job'])
+    stage(app,2)
+    app.text_area(key='answer_text').set_value((ROOT/'samples/answer.txt').read_text())
+    app.button(key='ingest').click().run()
+    stage(app,4);app.button(key='preview').click().run(timeout=60)
+    first=Path(app.session_state['bundle'])
+    preview_job(job,theme='bold')
+    stage(app,6)
+    assert not app.exception
+    assert any('테마' in w.value for w in app.warning)
+    assert first.is_dir()
+
+
+def test_external_theme_change_resets_open_approval_checks(monkeypatch,tmp_path):
+    from core.editor import preview_job
+    app=start(monkeypatch,tmp_path)
+    app.button(key='create').click().run()
+    job=Path(app.session_state['job'])
+    stage(app,2)
+    app.text_area(key='answer_text').set_value((ROOT/'samples/answer.txt').read_text())
+    app.button(key='ingest').click().run()
+    stage(app,5)
+    for i in range(5): app.checkbox(key=f'check_{job.name}_{i}').check()
+    app.run()
+    assert not app.button(key='accept').disabled
+    preview_job(job,theme='bold')
+    app.run()
+    assert app.button(key='accept').disabled

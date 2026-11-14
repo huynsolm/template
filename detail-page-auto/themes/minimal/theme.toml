@@ -1,0 +1,15 @@
+id = "minimal"
+name = "미니멀"
+description = "넓은 여백과 얇은 선"
+
+[tokens]
+background = "#ffffff"
+alternate = "#ffffff"
+hero = "#ffffff"
+text = "#172c2a"
+muted = "#465650"
+border = "#dce5de"
+padding_y = 64
+padding_x = 64
+font_scale = 1.0
+radius = 0
