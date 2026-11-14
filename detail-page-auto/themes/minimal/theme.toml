@@ -2,6 +2,8 @@ id = "minimal"
 name = "미니멀"
 description = "넓은 여백과 얇은 선"
 
+contrast_policy = "aa"
+
 [tokens]
 background = "#ffffff"
 alternate = "#ffffff"

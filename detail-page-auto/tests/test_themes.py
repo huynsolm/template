@@ -15,10 +15,12 @@ sys.path.insert(0, str(ROOT))
 
 
 @pytest.mark.parametrize('brand', ['#FFFF00', '#000000', '#777777', '#305b46', '#FFFFFF'])
-@pytest.mark.parametrize('theme', ['classic', 'minimal', 'bold'])
+@pytest.mark.parametrize('theme', ['minimal', 'bold'])
 def test_color_pairs_meet_aa(brand, theme):
     from core.themes import theme_styles, contrast_ratio
     styles = theme_styles(theme, brand)
+    assert styles['contrast_policy']=='aa'
+    assert styles['resolved_colors']['brand-original']==brand
     for pair in styles['contrast_pairs']:
         assert contrast_ratio(pair['foreground'], pair['background']) >= pair['minimum']
     assert styles['contrast_reviews'] == []
@@ -73,7 +75,7 @@ def test_themes_render_offline(tmp_path, theme):
     assert manifest['contrast_reviews'] == []
 
 
-@pytest.mark.parametrize('brand', ['#305b46', '#234567'])
+@pytest.mark.parametrize('brand', ['#305b46', '#234567', '#c7b195', '#FFFF00'])
 def test_classic_pixel_identical_to_original(tmp_path, monkeypatch, brand):
     from core.render import render, capture
     from core.schema import Document
@@ -82,13 +84,28 @@ def test_classic_pixel_identical_to_original(tmp_path, monkeypatch, brand):
     doc=Document.model_validate(data)
     out=render(doc, ROOT/'samples', tmp_path, png=True)
     themed,_=capture(out/'page.html')
-    # Keep the legacy stylesheet as an independent committed test fixture.
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+    env=Environment(loader=FileSystemLoader(ROOT/'templates'),autoescape=select_autoescape(['html']),undefined=StrictUndefined)
+    original_html=env.from_string((ROOT/'tests/fixtures/classic-original.html').read_text()).render(
+        **json.loads((out/'input.json').read_text()))
+    assert (out/'page.html').read_text()==original_html
+    assert (out/'assets/theme.css').read_bytes()==(ROOT/'tests/fixtures/classic-original.css').read_bytes()
+    (out/'page.html').write_text(original_html)
     (out/'assets/theme.css').write_bytes((ROOT/'tests/fixtures/classic-original.css').read_bytes())
-    (out/'page.html').write_text((out/'page.html').read_text().replace('style="', 'style="--brand: '+brand+'; ', 1))
     original,_=capture(out/'page.html')
     assert themed.size == original.size
     assert ImageChops.difference(themed, original).getbbox() is None
-    assert json.loads((out/'manifest.json').read_text())['contrast_adjustments'] == []
+    manifest=json.loads((out/'manifest.json').read_text())
+    assert manifest['contrast_adjustments'] == []
+    assert manifest['contrast_policy']=='legacy'
+    assert manifest['resolved_colors']['brand-text']==brand
+    low=brand in ('#c7b195','#FFFF00')
+    assert bool(manifest['contrast_reviews'])==low
+    reviews=json.loads((out/'review.json').read_text())
+    assert bool(reviews)==low
+    if low:
+        assert reviews[0]['code']=='BRAND_COLOR_LOW_CONTRAST'
+        assert manifest['contrast_reviews']==reviews
 
 
 def make_job(tmp_path, brand='#FFFF00'):
@@ -115,13 +132,18 @@ def test_theme_snapshots_zip_and_accept_preserve_history(tmp_path):
         with zipfile.ZipFile(io.BytesIO(build_zip(bundle))) as z:
             manifest=json.loads(z.read('manifest.json'))
             assert manifest['theme']==theme
-            assert manifest['contrast_adjustments']
-            assert all('대비' not in r['reason'] for r in json.loads(z.read('review.json')))
+            assert manifest['contrast_policy']==('legacy' if theme=='classic' else 'aa')
+            assert bool(manifest['contrast_adjustments'])==(theme!='classic')
+            assert manifest['resolved_colors']['brand-original']=='#FFFF00'
+            reviews=json.loads(z.read('review.json'))
+            assert any(r.get('code')=='BRAND_COLOR_LOW_CONTRAST' for r in reviews)==(theme=='classic')
     accepted=accept_job(job)
     meta=read_json(accepted/'manifest.json')
     assert meta['theme']=='bold'
     assert read_json(accepted/meta['rendered_job']/'manifest.json')['theme']=='bold'
     assert meta['contrast_adjustments']
+    assert meta['contrast_policy']=='aa'
+    assert meta['resolved_colors']==read_json(accepted/meta['rendered_job']/'manifest.json')['resolved_colors']
     assert read_json(regenerate_job(job)/'manifest.json')['theme']=='bold'
 
 
@@ -174,11 +196,11 @@ def test_impossible_token_pair_is_reviewed(tmp_path,monkeypatch):
     from core.render import render
     from core.schema import Document
     shutil.copytree(ROOT/'themes',tmp_path/'themes')
-    path=tmp_path/'themes/classic/theme.toml'
-    path.write_text(path.read_text().replace('alternate = "#f1f6f1"','alternate = "#000000"'))
+    path=tmp_path/'themes/minimal/theme.toml'
+    path.write_text(path.read_text().replace('background = "#ffffff"','background = "#000000"'))
     monkeypatch.setattr(themes,'THEMES_ROOT',tmp_path/'themes')
     document=Document.model_validate_json((ROOT/'samples/product.json').read_text())
-    bundle=render(document,ROOT/'samples',tmp_path/'rendered')
+    bundle=render(document,ROOT/'samples',tmp_path/'rendered',theme='minimal')
     manifest=json.loads((bundle/'manifest.json').read_text())
     assert manifest['contrast_reviews']
     assert manifest['needs_review'] is True
@@ -191,18 +213,18 @@ def test_switch_from_impossible_theme_clears_render_review_flag(tmp_path,monkeyp
     from core.editor import preview_job
     job=make_job(tmp_path,'#305b46')
     shutil.copytree(ROOT/'themes',tmp_path/'themes')
-    path=tmp_path/'themes/classic/theme.toml'
-    path.write_text(path.read_text().replace('alternate = "#f1f6f1"','alternate = "#000000"'))
+    path=tmp_path/'themes/minimal/theme.toml'
+    path.write_text(path.read_text().replace('background = "#ffffff"','background = "#000000"'))
     monkeypatch.setattr(themes,'THEMES_ROOT',tmp_path/'themes')
-    bad=preview_job(job)
+    bad=preview_job(job,theme='minimal')
     assert read_json(bad/'manifest.json')['needs_review']
-    good=preview_job(job,theme='minimal')
+    good=preview_job(job,theme='bold')
     assert read_json(good/'review.json') == []
     assert read_json(good/'manifest.json')['needs_review'] is False
 
 
 @pytest.mark.parametrize('theme',['classic','minimal','bold'])
-@pytest.mark.parametrize('brand',['#FFFF00','#000000','#777777'])
+@pytest.mark.parametrize('brand',['#FFFF00','#000000','#777777','#c7b195'])
 def test_browser_text_contrast(tmp_path,theme,brand):
     """Check computed CSS, not the palette function's own list of color pairs."""
     import re
@@ -241,8 +263,9 @@ def test_browser_text_contrast(tmp_path,theme,brand):
                         ancestor=ancestor.parentElement;
                     }
                     const size=parseFloat(style.fontSize), bold=parseInt(style.fontWeight)>=700;
+                    const heading=/^H[1-6]$/.test(element.tagName);
                     result.push({tag:element.tagName,foreground:style.color,background,
-                        minimum:(size>=24 || (bold && size>=18.667))?3:4.5});
+                        minimum:(heading && (size>=24 || (bold && size>=18.667)))?3:4.5});
                 }
                 return result;
             }''')
@@ -250,8 +273,136 @@ def test_browser_text_contrast(tmp_path,theme,brand):
             def hex_color(value):
                 channels=[int(n) for n in re.findall(r'\d+',value)[:3]]
                 return '#'+''.join(f'{n:02x}' for n in channels)
-            for pair in pairs:
-                ratio=contrast_ratio(hex_color(pair['foreground']),hex_color(pair['background']))
-                assert ratio>=pair['minimum'], (theme,brand,pair,ratio)
+            if theme!='classic':
+                for pair in pairs:
+                    ratio=contrast_ratio(hex_color(pair['foreground']),hex_color(pair['background']))
+                    assert ratio>=pair['minimum'], (theme,brand,pair,ratio)
+            else:
+                assert hex_color(page.locator('.eyebrow').evaluate('(e)=>getComputedStyle(e).color')).lower()==brand.lower()
+            border=page.locator('blockquote').evaluate('(e)=>getComputedStyle(e).borderLeftColor')
+            assert hex_color(border).lower()==brand.lower()
+            if theme=='bold':
+                for background in page.locator('main > section:nth-child(odd)').evaluate_all('(es)=>es.map(e=>getComputedStyle(e).backgroundColor)'):
+                    assert hex_color(background).lower()==brand.lower()
         finally:
             browser.close()
+
+
+@pytest.mark.parametrize('brand',['#c7b195','#FFFF00','#000000','#305b46'])
+def test_classic_legacy_does_not_adjust_any_color(brand):
+    from core.themes import theme_styles
+    styles=theme_styles('classic',brand)
+    assert styles['contrast_policy']=='legacy'
+    assert styles['contrast_adjustments']==[]
+    assert styles['resolved_colors']['brand-text']==brand
+    low=brand in ('#c7b195','#FFFF00')
+    assert bool(styles['contrast_reviews'])==low
+    if low:
+        assert styles['contrast_reviews'][0]['code']=='BRAND_COLOR_LOW_CONTRAST'
+
+
+@pytest.mark.parametrize('theme',['classic','minimal','bold'])
+def test_policy_metadata_in_job_render_zip_and_approval(tmp_path,theme):
+    from core.workflow import create_job,ingest_job,accept_job,read_json
+    from core.editor import preview_job,build_zip,reassess_draft
+    from core.facts import ProductFacts
+    data=json.loads((ROOT/'samples/facts.json').read_text())
+    data['product']['brand_color']='#c7b195'
+    job=create_job(ProductFacts.model_validate(data),ROOT/'samples',tmp_path,theme=theme)
+    expected='legacy' if theme=='classic' else 'aa'
+    assert read_json(job/'manifest.json')['contrast_policy']==expected
+    ingest_job(job,(ROOT/'samples/answer.txt').read_text())
+    bundle=preview_job(job)
+    original=(bundle/'manifest.json').read_bytes()
+    accepted=accept_job(job)
+    accepted_manifest=read_json(accepted/'manifest.json')
+    manifests=[read_json(job/'manifest.json'),read_json(bundle/'manifest.json'),
+               accepted_manifest,read_json(accepted/accepted_manifest['rendered_job']/'manifest.json')]
+    with zipfile.ZipFile(io.BytesIO(build_zip(bundle))) as z:
+        manifests.append(json.loads(z.read('manifest.json')))
+        assert any(r.get('code')=='BRAND_COLOR_LOW_CONTRAST' for r in json.loads(z.read('review.json')))==(theme=='classic')
+    assert all(m['contrast_policy']==expected for m in manifests)
+    assert all(m['resolved_colors']==manifests[0]['resolved_colors'] for m in manifests)
+    assert all(m['resolved_colors']['brand-original']=='#c7b195' for m in manifests)
+    assert all(bool(m['contrast_adjustments'])==(theme!='classic') for m in manifests)
+    assert all(any(r.get('code')=='BRAND_COLOR_LOW_CONTRAST' for r in m['contrast_reviews'])==(theme=='classic') for m in manifests)
+    assert any(r.get('code')=='BRAND_COLOR_LOW_CONTRAST' for r in read_json(job/'review.json'))==(theme=='classic')
+    assert any(r.get('code')=='BRAND_COLOR_LOW_CONTRAST' for r in reassess_draft(job))==(theme=='classic')
+    assert (bundle/'manifest.json').read_bytes()==original
+
+
+def test_switching_policy_refreshes_reviews_without_changing_snapshot(tmp_path):
+    from core.editor import preview_job
+    from core.workflow import read_json
+    job=make_job(tmp_path,'#c7b195')
+    classic=preview_job(job)
+    before=(classic/'review.json').read_bytes()
+    aa=preview_job(job,theme='minimal')
+    assert not read_json(aa/'review.json')
+    assert not read_json(job/'review.json')
+    legacy=preview_job(job,theme='classic')
+    assert read_json(job/'review.json')[0]['code']=='BRAND_COLOR_LOW_CONTRAST'
+    assert read_json(legacy/'manifest.json')['contrast_policy']=='legacy'
+    assert (classic/'review.json').read_bytes()==before
+
+
+@pytest.mark.parametrize('old_policy',[None,'aa'])
+def test_obsolete_classic_policy_bundle_is_not_reused(tmp_path,old_policy):
+    from core.editor import preview_job,bundle_matches
+    from core.workflow import read_json,write_json
+    job=make_job(tmp_path)
+    bundle=preview_job(job)
+    assert bundle_matches(job,bundle)
+    meta=read_json(bundle/'manifest.json')
+    if old_policy is None: meta.pop('contrast_policy',None)
+    else: meta['contrast_policy']=old_policy
+    write_json(bundle/'manifest.json',meta)
+    assert not bundle_matches(job,bundle)
+
+
+def test_theme_policy_cannot_override_classic_legacy(tmp_path,monkeypatch):
+    import core.themes as themes
+    shutil.copytree(ROOT/'themes',tmp_path/'themes')
+    path=tmp_path/'themes/classic/theme.toml'
+    text=path.read_text()
+    if 'contrast_policy' in text: text=text.replace('contrast_policy = "legacy"','contrast_policy = "aa"')
+    else: text+='\ncontrast_policy = "aa"\n'
+    path.write_text(text)
+    monkeypatch.setattr(themes,'THEMES_ROOT',tmp_path/'themes')
+    with pytest.raises(ValueError): themes.load_theme('classic')
+
+
+@pytest.mark.parametrize('initial,selected',[('classic','bold'),('bold','classic')])
+def test_failed_ingest_keeps_selected_theme_metadata_consistent(tmp_path,initial,selected):
+    from core.workflow import create_job,ingest_job,read_json
+    from core.facts import ProductFacts
+    from core.themes import theme_styles,contrast_metadata
+    data=json.loads((ROOT/'samples/facts.json').read_text())
+    data['product']['brand_color']='#FFFF00'
+    job=create_job(ProductFacts.model_validate(data),ROOT/'samples',tmp_path,theme=initial)
+    with pytest.raises(ValueError): ingest_job(job,'not JSON',theme=selected)
+    meta=read_json(job/'manifest.json')
+    assert meta['theme']==selected and meta['status']=='needs_correction'
+    assert contrast_metadata(meta)==contrast_metadata(theme_styles(selected,'#FFFF00'))
+    assert not (job/'review.json').exists()
+
+
+def test_replacing_old_approved_policy_invalidates_approval_pointer(tmp_path):
+    from core.workflow import accept_job,read_json,write_json
+    from core.editor import preview_job
+    accepted=accept_job(make_job(tmp_path,'#c7b195'))
+    metadata=read_json(accepted/'manifest.json')
+    old_bundle=accepted/metadata['rendered_job']
+    # Model an approved snapshot from the superseded classic-AA implementation.
+    metadata['contrast_policy']='aa'
+    write_json(accepted/'manifest.json',metadata)
+    old_metadata=read_json(old_bundle/'manifest.json');old_metadata['contrast_policy']='aa'
+    write_json(old_bundle/'manifest.json',old_metadata)
+    previous={str(p.relative_to(old_bundle)):p.read_bytes() for p in old_bundle.rglob('*') if p.is_file()}
+    new_bundle=preview_job(accepted)
+    assert new_bundle!=old_bundle
+    current=read_json(accepted/'manifest.json')
+    assert current['contrast_policy']=='legacy'
+    assert current['review_accepted'] is False
+    assert 'rendered_job' not in current
+    assert all((old_bundle/name).read_bytes()==value for name,value in previous.items())

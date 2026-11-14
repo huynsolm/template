@@ -11,6 +11,7 @@ from .assemble import DEFAULT_TERMS
 from .facts import ProductFacts
 from .schema import Document
 from .workflow import now, read_json, write_json
+from .themes import theme_styles, contrast_metadata, load_theme
 
 
 def provenance_path(job: Path, name: str) -> Path:
@@ -149,7 +150,6 @@ def reassess_draft(job: Path, document: Document | None = None, evidence=None) -
         if not ids: flag('근거 fact_ids가 비어 있음')
         if (re.search(r'\d|[%％]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
             flag('수치·인증·효능 표현에 claim/spec 근거 확인 필요')
-    from .themes import theme_styles
     manifest=read_json(job/'manifest.json')
     styles=theme_styles(manifest.get('theme','classic'),document.product.brand_color)
     return review+manifest.get('image_reviews',[])+styles['contrast_reviews']
@@ -205,6 +205,7 @@ def save_draft(job: Path, data: dict, locked_sections: list[str], evidence=None)
     write_json(job/'edits.json',{'locked_sections':locked_sections})
     write_json(job/'review.json',review)
     manifest=read_json(job/'manifest.json')
+    manifest.update(contrast_metadata(theme_styles(manifest.get('theme','classic'),document.product.brand_color)))
     manifest.update(updated_at=now(),needs_review=bool(review),review_accepted=False)
     write_json(job/'manifest.json',manifest)
     if (job/'preview.json').exists(): (job/'preview.json').unlink()
@@ -224,17 +225,19 @@ def preview_job(job: Path, theme=None) -> Path:
     job=Path(job)
     draft_bytes=(job/'draft.json').read_bytes()
     document=Document.model_validate_json(draft_bytes)
-    review=reassess_draft(job,document)
+    review=[item for item in reassess_draft(job,document) if item.get('section_id')!='theme']
     manifest=read_json(job/'manifest.json')
     theme=theme if theme is not None else manifest.get('theme','classic')
     bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme)
     rendered=read_json(bundle/'manifest.json')
     review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']
     snapshot_bundle(bundle,draft_bytes,review)
-    if manifest.get('theme','classic')!=theme:
+    if manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
         manifest.update(review_accepted=False)
         manifest.pop('rendered_job',None)
-    manifest.update(theme=theme,contrast_adjustments=rendered['contrast_adjustments'],needs_review=bool(review))
+    manifest.update(contrast_metadata(rendered))
+    manifest.update(theme=theme,needs_review=bool(review))
+    write_json(job/'review.json',review)
     write_json(job/'manifest.json',manifest)
     write_json(job/'preview.json',{'bundle':str(bundle.relative_to(job))})
     return bundle
@@ -248,7 +251,8 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
         snapshot=read_json(bundle/'manifest.json')
         digest=hashlib.sha256((job/'draft.json').read_bytes()).hexdigest()
         return (snapshot.get('draft_sha256')==digest
-                and snapshot.get('theme','classic')==current.get('theme','classic'))
+                and snapshot.get('theme','classic')==current.get('theme','classic')
+                and snapshot.get('contrast_policy')==load_theme(current.get('theme','classic')).contrast_policy)
     except (OSError,ValueError):
         return False
 

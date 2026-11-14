@@ -2,6 +2,8 @@ id = "classic"
 name = "기본"
 description = "기존의 차분한 녹색 상세페이지"
 
+contrast_policy = "legacy"
+
 [tokens]
 background = "#ffffff"
 alternate = "#f1f6f1"

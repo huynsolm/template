@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=860"><title>{{ product.name }}</title><link rel="stylesheet" href="assets/theme.css"></head>
+<body><main style="--brand: {{ product.brand_color }}">
+{% for section in sections %}<section data-section="{{ section.id }}" class="{{ section.type }}">{% include 'sections/' ~ section.type ~ '.html' %}</section>{% endfor %}
+</main></body></html>

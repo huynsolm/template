@@ -28,20 +28,20 @@ M5는 **서로 독립된 4개 작업**으로 나눈다. **A → B → C → D �
 
 ### 작업
 - [ ] 테마 구조: `themes/<id>/theme.toml`(이름·설명·색상 토큰·여백·글자 크기 비율·모서리 둥글기 등) + `themes/<id>/theme.css`. 섹션 HTML 구조(`templates/sections/*.html`)는 **모든 테마가 공유**하고, 테마는 CSS와 토큰만 바꾼다. 섹션 구조를 테마별로 복제하지 않는다.
-- [ ] 기존 디자인을 `classic` 테마로 옮긴다. **같은 입력이면 `classic`의 렌더링 결과가 기존과 동일**해야 한다(기존 기대 결과 비교 테스트 유지).
+- [ ] 기존 디자인을 `classic` 테마로 옮긴다. **모든 브랜드 색에서 `classic`의 HTML·DOM·렌더링 결과가 기존과 동일**해야 한다(기존 기대 결과 비교 테스트 유지). contrast policy는 `legacy`이며 브랜드 색을 자동 변경하지 않는다. 저대비면 `BRAND_COLOR_LOW_CONTRAST`를 manifest·review.json에 기록한다.
 - [ ] 새 테마 2개 추가:
   - `minimal`: 흰 배경, 얇은 구분선, 넓은 여백, 강조색 최소 사용
   - `bold`: 브랜드 색 큰 배경 블록, 큰 제목, 섹션별 배경 교차
-- [ ] 브랜드 색상(`product.brand_color`)에서 파생 색(옅은 배경·진한 글자 등)을 계산하는 함수를 `core/`에 두고, **글자와 배경의 대비가 WCAG AA(본문 4.5:1, 큰 제목 3:1) 이상**이 되도록 자동 보정한다. 보정이 불가능하면 검수 항목으로 남긴다.
-- [ ] 선택한 테마 id를 작업 manifest·렌더링 manifest·ZIP에 기록한다. 기본값은 `classic`(기존 작업 호환).
+- [ ] minimal·bold의 contrast policy는 `aa`이다. 장식선·막대·도형·브랜드 배경은 원본 브랜드 색을 유지하고 글자색 토큰만 보정한다. 브랜드 색상(`product.brand_color`)에서 파생 색(옅은 배경·진한 글자 등)을 계산하는 함수를 `core/`에 두고, **글자와 배경의 대비가 WCAG AA(본문 4.5:1, 큰 제목 3:1) 이상**이 되도록 자동 보정한다. 보정이 불가능하면 검수 항목으로 남긴다.
+- [ ] 선택한 테마 id, `contrast_policy`, 실제 적용 색(`resolved_colors`), 보정 이력(`contrast_adjustments`)을 작업 manifest·렌더링 manifest·ZIP에 기록한다. 기본값은 `classic`(기존 작업 호환).
 - [ ] 화면: ⑤ 미리보기에 테마 선택 상자. 테마를 바꾸면 새 렌더링 스냅샷을 만든다(기존 스냅샷 보존). 승인은 선택한 테마 기준.
 - [ ] CLI: `--theme classic|minimal|bold` (`ingest`, `accept`, `generate`, M1 `--input`)
 - [ ] 알 수 없는 테마 id, 토큰 누락, CSS에 외부 URL(`http`, `//`, `@import`) 포함 → 오류
 
 ### 테스트
 - [ ] 3개 테마 × 샘플 입력 → 실제 Chromium 렌더링, 폭 860px, 가로 넘침 없음, 한글 폰트 로딩 확인
-- [ ] `classic` 결과가 기존과 동일
-- [ ] 대비 보정: 매우 밝은 색(`#FFFF00`)·매우 어두운 색(`#000000`)·중간색에서 대비 기준 충족
+- [ ] `classic` + #c7b195 / #FFFF00을 포함해 원래 HTML·DOM·픽셀이 동일하고 저대비 경고 발생, 색 변경 없음
+- [ ] minimal·bold의 실제 DOM 대비 보정과 장식 색 미변경: 매우 밝은 색(`#FFFF00`)·매우 어두운 색(`#000000`)·중간색에서 대비 기준 충족
 - [ ] 테마 CSS에 외부 URL이 있으면 거부
 - [ ] AppTest: 테마 변경 → 새 스냅샷, 이전 스냅샷 유지, ZIP manifest에 테마 기록
 - [ ] 테마별 미리보기 캡처는 `tools/make_screenshots.py`에서만 생성(테스트가 `docs/` 수정 금지)

@@ -59,8 +59,8 @@ def prepare_images(facts: ProductFacts, job: Path, cache_dir: Path | None = None
 def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, method='paste', locked=None, locked_review=None, theme="classic"):
     if type(max_attempts) is not int or max_attempts<1:
         raise ValueError('max_attempts must be a positive integer')
-    from .themes import load_theme
-    load_theme(theme)
+    from .themes import theme_styles, contrast_metadata
+    styles=theme_styles(theme,facts.product.brand_color)
     paths=facts.validate_images(images)
     output=Path(output); output.mkdir(parents=True,exist_ok=True)
     job=Path(tempfile.mkdtemp(prefix='job-',dir=output))
@@ -82,7 +82,7 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
         write_json(job/'edits.json',{'locked_sections':list(locked or {})})
         write_json(job/'locked-review.json',locked_review or [])
         (job/'prompt.md').write_text(make_prompt(stored,locked),encoding='utf-8')
-        write_json(job/'manifest.json',{'theme':theme,'prompt_version':VERSION,'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews})
+        write_json(job/'manifest.json',{'theme':theme,**contrast_metadata(styles),'prompt_version':VERSION,'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews})
         return job
     except BaseException:
         shutil.rmtree(job)
@@ -98,16 +98,19 @@ def validation_errors(exc):
 def ingest_job(job: Path, answer: str, source_label='', render_output=False, terms=None, accept_review=False, theme=None):
     job=Path(job)
     manifest=read_json(job/'manifest.json')
-    from .themes import load_theme, theme_styles
+    from .themes import load_theme, theme_styles, contrast_metadata
     theme=theme if theme is not None else manifest.get('theme','classic')
     load_theme(theme)
     if (job/'draft.json').exists():
         raise ValueError('job already succeeded; use accept --job to approve or prompt --from-job --regenerate for new copy')
     if manifest['attempts']>=manifest['max_attempts']:
         raise ValueError('attempt limit reached; create a new job')
+    facts=ProductFacts.model_validate(read_json(job/'facts.json'))
+    styles=theme_styles(theme,facts.product.brand_color)
     terms=tuple(manifest.get('review_terms',DEFAULT_TERMS)) if terms is None else tuple(terms)
     attempt=manifest['attempts']+1
     (job/'attempts'/f'answer-{attempt}.txt').write_text(answer,encoding='utf-8')
+    manifest.update(contrast_metadata(styles))
     manifest.update(theme=theme,attempts=attempt,source_label=source_label,updated_at=now(),status='validating',review_terms=list(terms))
     write_json(job/'manifest.json',manifest)
     parsed=answer
@@ -115,7 +118,6 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
     try:
         parsed=extract_json(answer)
         copy=CopyDraft.model_validate(parsed)
-        facts=ProductFacts.model_validate(read_json(job/'facts.json'))
         document,review=assemble(facts,copy,locked=read_json(job/'locked.json'),terms=terms)
         review+=read_json(job/'locked-review.json')
         review+=manifest.get('image_reviews',[])
@@ -125,10 +127,9 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         stage.mkdir()
         write_json(stage/'draft.json',document.model_dump(exclude_none=True))
         write_json(stage/'copy.json',parsed)
-        styles=theme_styles(theme,document.product.brand_color)
         review+=styles['contrast_reviews']
         write_json(stage/'review.json',review)
-        manifest.update(contrast_adjustments=styles['contrast_adjustments'])
+        manifest.update(contrast_metadata(styles))
         needs_review=bool(review)
         if render_output:
             if needs_review:
@@ -162,7 +163,7 @@ def accept_job(source: Path, theme=None):
     seller=ProductFacts.model_validate(read_json(provenance_path(source,'facts.json')))
     images.update(seller.validate_images(source))
     original_manifest=read_json(source/'manifest.json')
-    from .themes import theme_styles
+    from .themes import theme_styles, contrast_metadata
     theme=theme if theme is not None else original_manifest.get('theme','classic')
     styles=theme_styles(theme,document.product.brand_color)
     review=[item for item in review if item.get('section_id')!='theme']+styles['contrast_reviews']
@@ -200,7 +201,7 @@ def accept_job(source: Path, theme=None):
         write_json(rendered/'manifest.json',rendered_manifest)
         write_json(staging/'manifest.json',{
             'theme':theme,
-            'contrast_adjustments':rendered_manifest['contrast_adjustments'],
+            **contrast_metadata(rendered_manifest),
             'image_processing':original_manifest.get('image_processing',[]),
             'image_reviews':original_manifest.get('image_reviews',[]),
             'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),

@@ -266,10 +266,12 @@ def test_theme_change_preserves_snapshot_and_uses_selected_theme(monkeypatch,tmp
     app.button(key='preview').click().run(timeout=60)
     first=Path(app.session_state['bundle'])
     before=(first/'manifest.json').read_bytes()
-    assert any('브랜드 색 대비 보정됨' in i.value for i in app.info)
+    assert not any('브랜드 색 대비 보정됨' in i.value for i in app.info)
+    assert json.loads((first/'manifest.json').read_text())['contrast_policy']=='legacy'
     app.selectbox(key='theme_choice').set_value('bold').run(timeout=60)
     assert not app.exception
     second=Path(app.session_state['bundle'])
+    assert any('브랜드 색 대비 보정됨' in i.value for i in app.info)
     assert second!=first and first.is_dir()
     assert (first/'manifest.json').read_bytes()==before
     assert json.loads((second/'manifest.json').read_text())['theme']=='bold'

@@ -2,6 +2,8 @@ id = "bold"
 name = "볼드"
 description = "큰 브랜드 블록과 큰 제목"
 
+contrast_policy = "aa"
+
 [tokens]
 background = "#ffffff"
 alternate = "#f1f6f1"

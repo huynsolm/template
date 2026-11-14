@@ -9,6 +9,7 @@
 - 다중 사용자·로그인·배포와 AI 연출 이미지 생성은 구현하지 않는다.
 - 플랫폼 규격 값을 지어내지 않는다. 공식 문서로 확인한 값만 출처 URL·확인 날짜와 함께 기록하고, 확인하지 못한 값은 비워 둔다.
 - 원본 사진을 수정하지 않는다. 배경 제거 모델 파일을 저장소에 커밋하지 않는다.
+- M5-A 대비 정책: classic은 legacy(모든 브랜드 색·기존 HTML/DOM/픽셀 유지, 저대비는 BRAND_COLOR_LOW_CONTRAST 경고만), minimal/bold는 aa(글자색만 보정, 장식·브랜드 배경은 원본 유지). 작업·렌더링·ZIP에 contrast_policy·resolved_colors·contrast_adjustments를 기록한다.
 - 새 폰트를 다운로드하지 않는다. 테마 CSS에 외부 URL·`@import`를 넣지 않는다.
 - 화면은 `127.0.0.1`에만 바인딩한다. 검증·조립·렌더링·이미지 처리·내보내기·일괄 처리 로직은 `core/`에 두고 UI에 중복 구현하지 않는다.
 - 사용자 입력·AI 답변·참고 자료를 `unsafe_allow_html=True`로 출력하지 않는다.

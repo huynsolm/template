@@ -11,6 +11,17 @@
 
 **M1·M2·M4·M3 및 M4 마무리 수정은 이미 구현됐다.** 완료된 마일스톤을 처음부터 다시 구현하지 않는다. 사용자가 다음 작업으로 **M5를 지정했다**: `CODEX_TASK_M5.md`(M5-A 테마 → M5-B 플랫폼 프로필 → M5-C 일괄 생성 → M5-D 참고 자료)와 `AGENTS.md`를 따른다. 다중 사용자·배포와 URL 자동 수집은 M5에서도 제외됐다.
 
+## M5-A 현재 상태
+
+M5-A 초기 구현은 `8cac895`에 있다. 이후 사용자 확정 기준으로 classic은 `legacy`, minimal/bold는 `aa`로 구분했다. classic은 색을 보정하지 않고 원본 HTML·DOM·CSS·픽셀을 유지하며 저대비는 `BRAND_COLOR_LOW_CONTRAST`로 기록한다. AA 보정은 글자색만 바꾸며 장식·브랜드 배경은 원래 색이다. 이전 "classic도 보정" 기준을 다시 적용하지 않는다.
+
+- `core/themes.py`: `theme_styles`, `contrast_metadata`, `load_theme`; 정책·적용 색·보정/경고를 공용 계산한다.
+- 테마 파일: `themes/{classic,minimal,bold}/theme.toml`, `theme.css`; 섹션 HTML은 공유한다.
+- manifest 공용 필드: `theme`, `contrast_policy`, `resolved_colors`, `contrast_adjustments`, `contrast_reviews`.
+- `core/editor.py`의 `bundle_matches`는 문구·테마·현재 정책을 확인한다. 이전 정책/정책 없는 스냅샷은 보존하지만 새 미리보기/다운로드에 재사용하지 않는다.
+- 회귀 기준: `tests/fixtures/classic-original.html`, `classic-original.css`는 b2cdcad 이전 디자인 원본이며 #c7b195/#FFFF00도 전체 픽셀 비교한다. `tests/test_themes.py`는 실제 DOM 대비·장식 색·정책/ZIP/승인 전파도 검사한다.
+- 수정 최종 테스트 수와 커밋·푸시 결과는 `M5_A_REPORT.md`와 최종 완료 보고를 확인한다. 다음 작업은 M5-B이며 이 수정 커밋에는 포함하지 않는다.
+
 ## 제품과 현재 흐름
 
 단일 사용자가 자신의 컴퓨터에서 상품 정보·사진으로 폭 860px의 상세페이지 이미지를 만드는 도구다.
