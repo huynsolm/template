@@ -184,10 +184,12 @@ def save_user_profile(profile_id: str, data: dict, profiles_dir: Path | None = N
 
 
 def current_bundle(job: Path) -> Path:
-    """The snapshot an export should use: the approved render, else the preview matching the saved text and theme."""
+    """The snapshot an export should use: the approved render, else the preview — each only if it matches
+    the job's current saved text, theme and contrast policy. Otherwise an error (never an older result)."""
     from .editor import bundle_matches
     job = Path(job)
     manifest = json.loads((job / 'manifest.json').read_text(encoding='utf-8'))
+    # The approved render too must still match the saved text, theme and contrast policy.
     if manifest.get('review_accepted') and manifest.get('rendered_job'):
         bundle = job / manifest['rendered_job']
         if bundle.is_dir() and bundle_matches(job, bundle):

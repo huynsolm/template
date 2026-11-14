@@ -153,11 +153,23 @@ def test_shipped_profiles_are_unverified_and_export_with_a_warning(tmp_path, bun
 
 
 def test_platform_templates_have_no_invented_values():
-    for profile_id in ('smartstore', 'coupang'):
-        profile = load_profile(profile_id)
-        assert profile.width is None and profile.max_height_per_image is None
-        assert profile.max_file_bytes is None and profile.max_images is None
-        assert profile.source_url is None and profile.checked_date is None
+    coupang = load_profile('coupang')
+    assert coupang.width is None and coupang.max_height_per_image is None
+    assert coupang.max_file_bytes is None and coupang.max_images is None
+    assert coupang.source_url is None and coupang.checked_date is None
+
+
+def test_smartstore_holds_only_the_officially_confirmed_width():
+    """Official help (checked 2026-11-15): recommended detail width 848px. 20MB and the 4,000px
+    display note are not exact limits for this tool, so they stay in notes and the profile stays unverified."""
+    smartstore = load_profile('smartstore')
+    assert smartstore.status == 'unverified'
+    assert smartstore.width == 848
+    assert smartstore.source_url == 'https://help.sell.smartstore.naver.com/faq/content.help?faqId=3923'
+    assert smartstore.checked_date == '2026-11-15'
+    assert smartstore.max_height_per_image is None and smartstore.max_file_bytes is None
+    assert smartstore.max_images is None and smartstore.formats is None and smartstore.jpeg_quality is None
+    assert '20MB' in smartstore.notes and '4,000px' in smartstore.notes
 
 
 def test_generic_profile_matches_previous_defaults():
@@ -288,3 +300,66 @@ def test_user_profile_folder_from_environment(tmp_path, monkeypatch):
     assert listed['env-shop']['error'] is None and listed['env-shop']['user']
     assert load_profile('env-shop').max_images == 3
     assert not (ROOT / 'profiles/user/env-shop.toml').exists()
+
+
+# --- which snapshot an export may use (review: stale approved snapshots) ---------------------
+
+@pytest.fixture
+def accepted(tmp_path):
+    from core.facts import ProductFacts
+    from core.workflow import accept_job, create_job, ingest_job
+    facts = ProductFacts.model_validate_json((ROOT / 'samples/facts.json').read_text(encoding='utf-8'))
+    job = create_job(facts, ROOT / 'samples', tmp_path)
+    ingest_job(job, (ROOT / 'samples/answer.txt').read_text(encoding='utf-8'))
+    return accept_job(job)
+
+
+def _edit_json(path, change):
+    data = json.loads(path.read_text(encoding='utf-8'))
+    change(data)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+
+
+def _stale(job, case):
+    manifest = json.loads((job / 'manifest.json').read_text(encoding='utf-8'))
+    snapshot = job / manifest['rendered_job']
+    if case == 'text':
+        _edit_json(job / 'draft.json', lambda d: d['sections'][0].update(headline='승인 뒤 바뀐 문구'))
+    elif case == 'theme':
+        _edit_json(job / 'manifest.json', lambda m: m.update(theme='minimal'))
+    elif case == 'policy':
+        # A snapshot approved under the earlier "classic is corrected (aa)" rule.
+        _edit_json(snapshot / 'manifest.json', lambda m: m.update(contrast_policy='aa'))
+    return snapshot
+
+
+@pytest.mark.parametrize('case', ['text', 'theme', 'policy'])
+def test_stale_approved_snapshot_is_never_exported(accepted, case):
+    from core.export import current_bundle
+    _stale(accepted, case)
+    with pytest.raises(ValueError, match='미리보기'):
+        current_bundle(accepted)
+
+
+@pytest.mark.parametrize('case', ['text', 'theme', 'policy'])
+def test_cli_export_refuses_stale_approved_snapshot(accepted, tmp_path, case):
+    _stale(accepted, case)
+    result = subprocess.run([sys.executable, str(ROOT / 'cli.py'), 'export', '--job', str(accepted), '--profile', 'generic',
+                             '--output', str(tmp_path / 'zips')], capture_output=True, text=True, cwd=ROOT)
+    assert result.returncode != 0 and '미리보기' in result.stderr
+    assert not (tmp_path / 'zips').exists()
+
+
+def test_matching_preview_is_used_when_the_approved_snapshot_is_stale(accepted):
+    from core.editor import preview_job
+    from core.export import current_bundle
+    stale = _stale(accepted, 'theme')
+    preview = preview_job(accepted, theme='minimal')
+    chosen = current_bundle(accepted)
+    assert chosen == preview and chosen != stale
+
+
+def test_current_approved_snapshot_is_used(accepted):
+    from core.export import current_bundle
+    manifest = json.loads((accepted / 'manifest.json').read_text(encoding='utf-8'))
+    assert current_bundle(accepted) == accepted / manifest['rendered_job']

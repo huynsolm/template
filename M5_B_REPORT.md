@@ -43,14 +43,14 @@ git status --porcelain=v1
 | 프로필 | 결과 | 실제 출력 | ZIP 표시 |
 |---|---|---|---|
 | generic | 경고: PROFILE_UNVERIFIED, 용량·장수 값 없음 | 860×2590, JPG 1장 | generic.DRAFT.UNVERIFIED.zip |
-| smartstore | 경고: PROFILE_UNVERIFIED, 규격 값 비어 기본값 사용/미검사 | 860×2590, JPG 1장 | smartstore.DRAFT.UNVERIFIED.zip |
+| smartstore | 경고: PROFILE_UNVERIFIED, 폭 외 규격 값 비어 기본값 사용/미검사 (6장 보완 후 폭 848px 적용) | 보완 전 860×2590, JPG 1장 | smartstore.DRAFT.UNVERIFIED.zip |
 | coupang | 경고: PROFILE_UNVERIFIED, 규격 값 비어 기본값 사용/미검사 | 860×2590, JPG 1장 | coupang.DRAFT.UNVERIFIED.zip |
 
-위 smartstore·coupang의 출력 크기는 판매처 규격이 아니라 명시적으로 표시한 도구 기본값이다. 프로필 파일의 규격 값·출처·확인 날짜는 비어 있다. 결과물 예시는 `detail-page-auto/outputs/m5-b-check/`에 있으며 outputs는 커밋하지 않는다.
+위 표는 6장 보완 전 결과다. coupang의 출력 크기는 판매처 규격이 아니라 도구 기본값이다. smartstore는 6장 보완으로 폭만 공식 권장값 848px을 쓰고 나머지는 도구 기본값이다. 결과물 예시는 `detail-page-auto/outputs/m5-b-check/`에 있으며 outputs는 커밋하지 않는다.
 
 | 판매처 | 공식 규격 출처 URL | 규격 확인 날짜 | 결론 |
 |---|---|---|---|
-| smartstore | 미확인, 필드 비움 | 비움 | **사용자 확인 필요** |
+| smartstore | https://help.sell.smartstore.naver.com/faq/content.help?faqId=3923 (검토자 확인, 6장) | 2026-11-15 | 권장 폭 848px만 반영, 나머지 **사용자 확인 필요**, `unverified` 유지 |
 | coupang | 미확인, 필드 비움 | 비움 | **사용자 확인 필요** |
 
 2026-11-15(KST) 공식 사이트를 직접 열려고 시도했으나 이 환경의 연결 터널에서 모두 403으로 차단됐다. 따라서 문서의 규격을 직접 확인하지 못했고 어떤 값도 채우지 않았다. 블로그·커뮤니티를 근거로 쓰지 않았다.
@@ -73,3 +73,12 @@ git status --porcelain=v1
 ## 5. 푸시
 
 브랜치 `ccr-f9c07036-vgvm5j`. `251f0c0` 위에 보완 커밋을 별도로 만들고 푸시한다. 결과와 해시는 최종 응답에 기록한다.
+
+## 6. 검토 후 추가 보완 (Claude, 2026-11-15)
+
+검토 지시(Important 1건·스마트스토어 근거)를 Claude 세션에서도 동시에 처리했다. `current_bundle()` 수정은 위 1장 3번과 같은 변경이라 중복 반영하지 않았고, 아래만 더했다.
+
+- **스마트스토어 부분 반영**: 검토자가 공식 도움말(`https://help.sell.smartstore.naver.com/faq/content.help?faqId=3923`)에서 2026-11-15에 확인한 **상세설명 권장 폭 848px**만 `width`로 넣고 `source_url`·`checked_date = "2026-11-15"`를 기록했다. 장당 20MB(바이트 환산 기준 미확인)와 "4,000px 초과 시 3,000px 노출·나머지 펼쳐보기"는 `notes`에만 적었다. 허용 형식·최대 장수·이미지별 최대 높이·용량 제한값은 비워 두고 `status = "unverified"`를 유지한다. Claude 작업 환경에서는 해당 도움말에 접속할 수 없어 직접 재확인하지 못했다. 쿠팡은 공식 근거가 없어 빈 `unverified` 틀 그대로다.
+- **추가 회귀 테스트** (`tests/test_export.py`): 승인 뒤 문구 변경·테마 변경·예전 classic-AA 정책 스냅샷 각각에 대해 `current_bundle()`과 **CLI export**가 내보내지 않고 오류로 끝나는지(ZIP 미생성), 오래된 승인본 대신 일치하는 미리보기를 쓰는지, 현재와 일치하는 승인본은 그대로 쓰는지. 스마트스토어 프로필이 확인된 폭·출처·날짜만 갖는지.
+- README의 기본 프로필 설명을 스마트스토어·쿠팡으로 나눠 갱신했다.
+- `00a85fb` 위로 옮긴 뒤 전체 테스트: **334 passed, 0 failed, 0 skipped** (약 14분). 그 전 실행에서 `test_browser.py`가 ① 사진 처리 미리보기 대기 시간 초과로 한 번 실패했으나(수정 전 기준선 `b2cdcad`에서도 같은 지점 실패 1회), 단독 재실행 5번 중 4번과 이번 전체 실행에서 통과했다. 건너뛰거나 완화하지 않았다.
