@@ -329,3 +329,44 @@ def test_external_theme_change_resets_open_approval_checks(monkeypatch,tmp_path)
     preview_job(job,theme='bold')
     app.run()
     assert app.button(key='accept').disabled
+
+
+def test_download_profile_check_export_and_user_profile(monkeypatch,tmp_path):
+    from core.workflow import create_job,ingest_job,accept_job
+    from core.facts import ProductFacts
+    import shutil
+    monkeypatch.setenv('DETAIL_PAGE_USER_PROFILES',str(tmp_path/'user-profiles'))
+    facts=ProductFacts.model_validate_json((ROOT/'samples/facts.json').read_text())
+    job=create_job(facts,ROOT/'samples',tmp_path/'source')
+    ingest_job(job,(ROOT/'samples/answer.txt').read_text())
+    # Only the approved job is listed: the source job's label can be identical within the same minute.
+    (tmp_path/'outputs').mkdir()
+    accepted=Path(shutil.move(str(accept_job(job)),str(tmp_path/'outputs')))
+    monkeypatch.setenv('DETAIL_PAGE_OUTPUTS',str(tmp_path/'outputs'))
+    app=AppTest.from_file(str(ROOT/'app/main.py'),default_timeout=120).run()
+    app.selectbox(key='resume_job').set_value(str(accepted));app.button(key='resume').click().run()
+    stage(app,6)
+    labels=app.selectbox(key='export_profile').options
+    assert [l.split(' ')[0] for l in labels[:3]]==['기본','네이버','쿠팡'] and all('규격 미확인' in l for l in labels[:3])
+    app.selectbox(key='export_profile').set_value('smartstore').run()
+    app.button(key='export_run').click().run()
+    assert not app.exception
+    assert any('규격 미확인' in w.value for w in app.warning)
+    name,data=app.session_state['export_zip']
+    assert name.endswith('-smartstore.UNVERIFIED.zip')
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        assert json.loads(archive.read('manifest.json'))['export']['profile']['id']=='smartstore'
+    # a user profile that cannot be met: one image only
+    app.text_input(key='new_profile_id').set_value('one-image')
+    app.text_input(key='new_profile_name').set_value('한 장만')
+    app.number_input(key='new_profile_max_height').set_value(800)
+    app.number_input(key='new_profile_max_images').set_value(1)
+    app.button(key='new_profile_save').click().run()
+    assert not app.exception and not app.error, [e.value for e in app.error]
+    assert (tmp_path/'user-profiles/one-image.toml').is_file()
+    app.selectbox(key='export_profile').set_value('one-image').run()
+    app.button(key='export_run').click().run()
+    assert any('장수 초과' in e.value for e in app.error)
+    assert app.session_state['export_zip'] is None
+    everything=' '.join(str(x.value) for kind in ('success','info','warning','error','caption','markdown') for x in app.get(kind))
+    assert '업로드 가능' not in everything

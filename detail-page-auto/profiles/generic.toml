@@ -1,0 +1,9 @@
+# 특정 플랫폼 규격이 아닌 이 도구의 기본 출력값(폭 860px, 4,000px 분할, JPG 품질 90)이다.
+name = "기본 (특정 플랫폼 아님)"
+status = "unverified"
+width = 860
+max_height_per_image = 4000
+formats = ["jpg"]
+jpeg_quality = 90
+min_jpeg_quality = 80
+notes = "특정 플랫폼 규격 아님. 이 도구의 기존 기본 출력값이며 업로드 규격은 올릴 곳에서 직접 확인해야 합니다."

@@ -71,6 +71,11 @@ def main(argv=None):
             generate.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
             for themed in (ingest,generate,accept):
                 themed.add_argument('--theme',choices=THEME_IDS,default=None)
+            export=sub.add_parser('export',help='플랫폼 프로필로 규격 검사 후 ZIP 내보내기 (AI 호출 없음)')
+            export.add_argument('--job',type=Path,required=True)
+            export.add_argument('--profile',required=True,help='generic, smartstore, coupang 또는 profiles/user/의 사용자 프로필 이름')
+            export.add_argument('--format',choices=['jpg','png'],help='생략하면 프로필의 첫 번째 형식')
+            export.add_argument('--output',type=Path,help='ZIP 저장 폴더 (기본: 작업 폴더의 exports/)')
             args=parser.parse_args(argv)
             terms=None
             if getattr(args,'review_terms',None):
@@ -84,6 +89,18 @@ def main(argv=None):
                 if any(item.get('settings',{}).get('remove_background') and not item.get('background_removed') for item in meta['image_processing']):
                     print(result.resolve())
                     raise ValueError('배경 제거 실패: 기본 처리본은 출력 작업 폴더에 유지했습니다.')
+            elif args.command=='export':
+                from core.export import build_export_zip, current_bundle, export_bundle
+                outcome=export_bundle(current_bundle(args.job),args.profile,fmt=args.format)
+                for check in outcome['checks']:
+                    if check['level']!='info': print(('ERROR: ' if check['level']=='error' else 'WARNING: ')+check['message'],file=sys.stderr)
+                if outcome['status']=='error':
+                    raise ValueError('내보내기 오류: 위 항목을 확인하세요.')
+                name,data=build_export_zip(outcome['folder'])
+                folder=args.output or Path(args.job)/'exports'
+                folder.mkdir(parents=True,exist_ok=True)
+                result=folder/name
+                result.write_bytes(data)
             elif args.command=='accept':
                 result=accept_job(args.job,theme=args.theme)
             elif args.command=='prompt':

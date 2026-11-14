@@ -488,7 +488,69 @@ def download_page(job):
         S['download_zip']=data
         filename=manifest['job_id']+('' if manifest.get('review_accepted') else '.DRAFT')+'.zip'
         st.download_button('ZIP 다운로드',data=data,file_name=filename,mime='application/zip',key='download_zip_button')
+    export_section(bundle)
     display_bundle(bundle)
+
+
+def export_section(bundle):
+    """Platform profile check and per-profile ZIP. All rules live in core/export.py."""
+    from core.export import build_export_zip, export_bundle, list_profiles, load_profile
+    st.subheader('올릴 곳 규격 검사·내보내기')
+    st.caption('프로필의 폭·분할 높이·용량·장수·형식으로 검사해 따로 ZIP을 만듭니다. 공식 문서로 확인되지 않은 프로필은 "규격 미확인"으로 표시하며, 실제 등록 규격은 올릴 곳에서 다시 확인해야 합니다.')
+    profiles=list_profiles()
+    # A newly saved profile is selected on the next run (a widget's value cannot change after it is drawn).
+    if 'export_profile_next' in S: S['export_profile']=S.pop('export_profile_next')
+    names={p['id']:p['name']+(' · 규격 미확인' if p['status']!='verified' else ' · 공식 문서 확인됨')+(' · 사용자 프로필' if p['user'] else '') for p in profiles}
+    profile_id=st.selectbox('내보내기 프로필',[p['id'] for p in profiles],format_func=lambda value:names[value],key='export_profile')
+    broken=next(p['error'] for p in profiles if p['id']==profile_id)
+    if broken:
+        st.error('프로필 파일 오류: '+broken)
+    else:
+        profile=load_profile(profile_id)
+        if profile.status=='verified':
+            st.caption(f'출처: {profile.source_url} · 확인 날짜: {profile.checked_date}')
+        if profile.notes: st.caption(profile.notes)
+    if st.button('규격 검사 후 내보내기',key='export_run',disabled=bool(broken) or S.get('busy',False)):
+        ok,result=perform('규격 검사·내보내기',lambda:export_bundle(bundle,profile_id))
+        S['export_result']=result if ok else None
+        S['export_for']=(str(bundle),profile_id)
+        S['export_zip']=None
+        if ok and result['status']!='error':
+            S['export_zip']=build_export_zip(result['folder'])
+    result=S.get('export_result') if S.get('export_for')==(str(bundle),profile_id) else None
+    if result:
+        for check in result['checks']:
+            {'error':st.error,'warning':st.warning}.get(check['level'],st.caption)(check['message'])
+        if result['status']=='error':
+            st.error('내보내기 오류: 위 항목을 고친 뒤 다시 시도하세요. ZIP을 만들지 않았습니다.')
+        elif S.get('export_zip'):
+            if result['status']=='pass':
+                st.success('이 프로필의 기준 검사를 통과했습니다. 실제 등록 규격은 올릴 곳에서 다시 확인하세요.')
+            name,data=S['export_zip']
+            st.download_button(name+' 다운로드',data=data,file_name=name,mime='application/zip',key='export_zip_button')
+    with st.expander('새 프로필 만들기'):
+        st.caption('공식 판매자 도움말에서 직접 확인한 값만 입력하세요. 비워 둔 값은 검사하지 않고 "규격 미확인"으로 표시합니다. 사용자 프로필은 이 컴퓨터에만 저장됩니다.')
+        new_id=st.text_input('프로필 이름(영문 소문자·숫자·-·_)',key='new_profile_id')
+        new_name=st.text_input('표시 이름',key='new_profile_name')
+        status=st.selectbox('확인 상태',['unverified','verified'],format_func=lambda v:{'unverified':'규격 미확인','verified':'공식 문서로 확인함 (모든 값·출처·날짜 필요)'}[v],key='new_profile_status')
+        source=st.text_input('공식 문서 주소 (https://, 접속하지 않고 기록만 함)',key='new_profile_source')
+        checked=st.text_input('확인 날짜 (YYYY-MM-DD)',key='new_profile_date')
+        width=st.number_input('이미지 폭(px)',min_value=100,max_value=4000,value=None,step=10,key='new_profile_width')
+        height=st.number_input('이미지 1장 최대 높이(px)',min_value=100,max_value=30000,value=None,step=100,key='new_profile_max_height')
+        size=st.number_input('이미지 1장 최대 용량(바이트)',min_value=1,value=None,step=100000,key='new_profile_max_bytes')
+        count=st.number_input('최대 장수',min_value=1,max_value=1000,value=None,step=1,key='new_profile_max_images')
+        formats=st.multiselect('허용 형식',['jpg','png'],key='new_profile_formats')
+        quality=st.number_input('JPEG 품질',min_value=1,max_value=100,value=None,step=1,key='new_profile_quality')
+        notes=st.text_area('메모',key='new_profile_notes')
+        if st.button('프로필 저장',key='new_profile_save',disabled=S.get('busy',False)):
+            from core.export import save_user_profile
+            data={'name':new_name,'status':status,'source_url':source.strip() or None,'checked_date':checked.strip() or None,
+                  'width':width,'max_height_per_image':height,'max_file_bytes':size,'max_images':count,
+                  'formats':formats or None,'jpeg_quality':quality,'notes':notes}
+            ok,_=perform('프로필 저장',lambda:save_user_profile(new_id.strip(),{k:(int(v) if isinstance(v,float) else v) for k,v in data.items()}))
+            if ok:
+                S['export_profile_next']=new_id.strip()
+                st.rerun()
 
 
 def main():

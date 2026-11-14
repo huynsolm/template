@@ -1,4 +1,4 @@
-# 상세페이지 자동화 — M1 + M2 + M3 + M4
+# 상세페이지 자동화 — M1 + M2 + M3 + M4 + M5-A(테마)·M5-B(내보내기 프로필)
 
 Python 3.12에서 로컬 JSON과 PNG/JPEG를 받아 HTML과 폭 860px JPG를 만듭니다. M2는 구독 채팅의 붙여넣기 또는 공식 CLI로 문구 초안을 받습니다. M3는 원본을 보존하며 방향·색 공간·크기를 정리하고 선택적으로 로컬 배경 제거를 지원합니다. M4는 단일 사용자용 로컬 Streamlit 화면을 제공합니다. 유료 API·외부 이미지 서비스·크롤링·배포 기능은 포함하지 않습니다.
 
@@ -47,6 +47,29 @@ CLI의 M1 렌더링, `ingest`, `generate`, `accept`에도 `--theme classic|minim
 | ![기본 테마](docs/images/theme-classic.png) | ![미니멀 테마](docs/images/theme-minimal.png) | ![볼드 테마](docs/images/theme-bold.png) |
 
 테마 예시를 명시적으로 다시 만들려면 `.venv/bin/python tools/make_screenshots.py --themes-only`를 실행합니다. 테스트는 문서 이미지를 수정하지 않습니다.
+
+### 올릴 곳 규격으로 내보내기 (플랫폼 프로필)
+
+⑦ 다운로드의 **올릴 곳 규격 검사·내보내기**에서 프로필을 고르고 **규격 검사 후 내보내기**를 누르면, 미리보기·승인 결과를 프로필의 폭·이미지 1장 최대 높이·용량·장수·형식으로 검사해 프로필별 ZIP을 따로 만듭니다. 원래 렌더링 결과는 바꾸지 않으며, 내보내기 결과는 작업 폴더의 `exports/`에 새로 만듭니다.
+
+- **폭**이 다르면 비율을 유지해 줄이거나 늘립니다.
+- **분할**은 섹션 경계에서 먼저 자르고, 한 섹션이 최대 높이보다 길면 글자가 없는 빈 줄에서만 자릅니다. 빈 줄이 없으면 글자를 자르지 않고 오류로 알려 줍니다.
+- **용량**을 넘으면 JPEG 품질을 프로필의 최솟값(기본 80)까지만 낮춰 다시 저장합니다. 그래도 넘거나, 장수가 많거나, 허용하지 않는 형식이면 ZIP을 만들지 않고 **내보내기 오류**와 이유를 보여 줍니다.
+- 기본 제공 프로필
+  - `generic`: 이 도구의 기존 기본값(폭 860px, 4,000px 분할, JPG 품질 90). **특정 플랫폼 규격이 아닙니다.**
+  - `smartstore`, `coupang`: 값이 비어 있는 틀입니다. 플랫폼 규격 값을 지어내지 않으며, 공식 판매자 도움말에서 확인한 값만 출처 주소·확인 날짜와 함께 채워야 합니다. 비어 있는 값은 기본값으로 결과를 만들되 검사하지 않습니다.
+- 공식 문서로 확인되지 않은 프로필(`status = "unverified"`)이나 값이 빈 프로필로 내보내면 결과는 만들지만 화면·manifest에 **"규격 미확인"** 경고를 표시하고 ZIP 이름에 `.UNVERIFIED`를 붙입니다. 이 도구는 어떤 경우에도 업로드할 수 있다고 판정하지 않습니다. 실제 등록 규격은 올릴 곳에서 다시 확인하세요.
+- **새 프로필 만들기**에서 직접 확인한 값·공식 문서 주소·확인 날짜를 입력해 사용자 프로필을 만들 수 있습니다. 사용자 프로필은 `profiles/user/`(Git 제외, 이 컴퓨터에만 저장)에 저장됩니다. 저장 위치는 `DETAIL_PAGE_USER_PROFILES` 환경변수로 바꿀 수 있습니다. 공식 문서 주소는 기록만 하고 접속하지 않습니다.
+- ZIP의 `manifest.json`에 `export` 항목으로 프로필 id·값·출처·확인 날짜와 검사 결과(통과/경고/오류)가 들어갑니다.
+
+명령으로는 다음과 같이 내보냅니다. 승인된 결과가 있으면 그것을, 없으면 현재 문구·테마와 같은 미리보기를 씁니다.
+
+```bash
+.venv/bin/python cli.py export --job outputs/job-XXXX --profile generic
+.venv/bin/python cli.py export --job outputs/job-XXXX --profile smartstore --format jpg --output outputs/zips
+```
+
+프로필 파일(`profiles/<id>.toml`)의 항목: `name`, `status`(`verified`|`unverified`), `source_url`(https 공식 문서), `checked_date`(YYYY-MM-DD), `width`, `max_height_per_image`, `max_file_bytes`, `max_images`, `formats`(`jpg`/`png`), `jpeg_quality`, `min_jpeg_quality`(기본 80), `notes`. 날짜 형식 오류·음수·알 수 없는 항목이 있으면 오류입니다. `verified`는 출처·날짜·모든 값이 있어야 합니다.
 
 설정된 구독 CLI가 있을 때만 선택 버튼이 나타납니다. CLI도 검증된 명령을 빈 임시 폴더에서 실행하며, 사용량·로그인·시간 초과 오류는 붙여넣기 방식으로 이어갈 수 있도록 안내합니다. 테스트는 실제 AI 서비스를 호출하지 않습니다.
 
