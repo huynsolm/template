@@ -9,7 +9,7 @@
 - 먼저 `AGENTS.md`, 이 문서, `detail-page-auto/README.md`를 읽는다.
 - 배경은 `PLAN_detail_page_automation.md`, 상세 요구사항은 `CODEX_TASK_M1.md`, `CODEX_TASK_M2.md`, `CODEX_TASK_M4.md`, `CODEX_TASK_M3.md`에 있다.
 
-**M1·M2·M4·M3 및 M4 마무리 수정은 이미 구현됐다.** `AGENTS.md`의 현재 작업 설명은 마지막 M3 지시서 기준으로 남아 있다. 완료된 마일스톤을 처음부터 다시 구현하지 않는다. 다음 구현 범위는 사용자가 새로 지정한 요청으로 정한다. 아직 다음 기능은 지정되지 않았으며 M5를 자동으로 시작하지 않는다.
+**M1·M2·M4·M3 및 M4 마무리 수정은 이미 구현됐다.** 완료된 마일스톤을 처음부터 다시 구현하지 않는다. 사용자가 다음 작업으로 **M5를 지정했다**: `CODEX_TASK_M5.md`(M5-A 테마 → M5-B 플랫폼 프로필 → M5-C 일괄 생성 → M5-D 참고 자료)와 `AGENTS.md`를 따른다. 다중 사용자·배포와 URL 자동 수집은 M5에서도 제외됐다.
 
 ## 제품과 현재 흐름
 
