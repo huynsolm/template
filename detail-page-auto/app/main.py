@@ -503,6 +503,7 @@ def export_section(bundle):
     names={p['id']:p['name']+(' · 규격 미확인' if p['status']!='verified' else ' · 공식 문서 확인됨')+(' · 사용자 프로필' if p['user'] else '') for p in profiles}
     profile_id=st.selectbox('내보내기 프로필',[p['id'] for p in profiles],format_func=lambda value:names[value],key='export_profile')
     broken=next(p['error'] for p in profiles if p['id']==profile_id)
+    profile=None
     if broken:
         st.error('프로필 파일 오류: '+broken)
     else:
@@ -510,14 +511,18 @@ def export_section(bundle):
         if profile.status=='verified':
             st.caption(f'출처: {profile.source_url} · 확인 날짜: {profile.checked_date}')
         if profile.notes: st.caption(profile.notes)
+    export_key=(str(bundle),profile_id,json.dumps(profile.record(),sort_keys=True) if profile else None)
+    if S.get('export_for')!=export_key:
+        S['export_result']=None
+        S['export_zip']=None
     if st.button('규격 검사 후 내보내기',key='export_run',disabled=bool(broken) or S.get('busy',False)):
         ok,result=perform('규격 검사·내보내기',lambda:export_bundle(bundle,profile_id))
         S['export_result']=result if ok else None
-        S['export_for']=(str(bundle),profile_id)
+        S['export_for']=export_key
         S['export_zip']=None
         if ok and result['status']!='error':
             S['export_zip']=build_export_zip(result['folder'])
-    result=S.get('export_result') if S.get('export_for')==(str(bundle),profile_id) else None
+    result=S.get('export_result') if S.get('export_for')==export_key else None
     if result:
         for check in result['checks']:
             {'error':st.error,'warning':st.warning}.get(check['level'],st.caption)(check['message'])

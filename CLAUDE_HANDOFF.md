@@ -22,6 +22,14 @@ M5-A 초기 구현은 `8cac895`에 있다. 이후 사용자 확정 기준으로 
 - 회귀 기준: `tests/fixtures/classic-original.html`, `classic-original.css`는 b2cdcad 이전 디자인 원본이며 #c7b195/#FFFF00도 전체 픽셀 비교한다. `tests/test_themes.py`는 실제 DOM 대비·장식 색·정책/ZIP/승인 전파도 검사한다.
 - 수정 최종 테스트 수와 커밋·푸시 결과는 `M5_A_REPORT.md`와 최종 완료 보고를 확인한다. 다음 작업은 M5-B이며 이 수정 커밋에는 포함하지 않는다.
 
+## M5-B 현재 상태
+
+원격 선행 구현은 `251f0c0`이며 이후 검증·보완은 `M5_B_REPORT.md`를 따른다. `core/export.py`의 Profile/load_profile/list_profiles/save_user_profile/export_bundle/build_export_zip/current_bundle을 UI·CLI에서 공유한다. 프로필은 `profiles/<id>.toml`, 사용자 입력은 Git 제외 `profiles/user/`에 저장한다.
+
+smartstore·coupang은 값·출처·확인 날짜가 빈 `unverified` 템플릿이다. 공식 도움말을 직접 확인하지 않고 값을 채우지 않는다. 미확인 결과는 경고와 `.UNVERIFIED` ZIP 이름을 유지한다.
+
+내보내기는 섹션 경계 우선이며 섹션 내부는 RGB 모든 채널의 픽셀이 균일한 빈 행에서만 자른다. 회색조나 오차 허용으로 흐린 글자 행을 빈 행으로 처리하지 않는다. ZIP 최상위 pages/width/height/sections는 실제 내보낸 이미지 기준이며, 변환 전 렌더링 manifest는 source_render에 보존한다. HTML/assets는 원본 렌더링 자료다. 승인본도 현재 문구·테마·대비 정책과 일치해야 내보낸다. 프로필 값을 덮어쓰면 UI의 옛 검사 결과와 ZIP 캐시를 무효화한다.
+
 ## 제품과 현재 흐름
 
 단일 사용자가 자신의 컴퓨터에서 상품 정보·사진으로 폭 860px의 상세페이지 이미지를 만드는 도구다.

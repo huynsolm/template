@@ -43,8 +43,7 @@ def pages(result):
 
 
 def is_blank_row(image, y):
-    low, high = image.crop((0, y, image.width, y + 1)).convert('L').getextrema()
-    return high - low <= 12
+    return all(low == high for low, high in image.crop((0, y, image.width, y + 1)).convert('RGB').getextrema())
 
 
 # --- splitting and resizing ----------------------------------------------------------------

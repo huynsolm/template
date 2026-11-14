@@ -370,3 +370,32 @@ def test_download_profile_check_export_and_user_profile(monkeypatch,tmp_path):
     assert app.session_state['export_zip'] is None
     everything=' '.join(str(x.value) for kind in ('success','info','warning','error','caption','markdown') for x in app.get(kind))
     assert '업로드 가능' not in everything
+
+
+def test_overwriting_export_profile_invalidates_visible_zip(monkeypatch,tmp_path):
+    from core.export import save_user_profile
+    from core.editor import preview_job
+    from core.workflow import create_job,ingest_job
+    from core.facts import ProductFacts
+    monkeypatch.setenv('DETAIL_PAGE_USER_PROFILES',str(tmp_path/'profiles'))
+    monkeypatch.setenv('DETAIL_PAGE_OUTPUTS',str(tmp_path/'jobs'))
+    facts=ProductFacts.model_validate_json((ROOT/'samples/facts.json').read_text())
+    job=create_job(facts,ROOT/'samples',tmp_path/'jobs')
+    ingest_job(job,(ROOT/'samples/answer.txt').read_text());preview_job(job)
+    save_user_profile('my-shop',{'name':'내 판매처','status':'unverified','width':860})
+    app=AppTest.from_file(str(ROOT/'app/main.py'),default_timeout=120).run()
+    app.selectbox(key='resume_job').set_value(str(job));app.button(key='resume').click().run()
+    stage(app,6)
+    app.selectbox(key='export_profile').set_value('my-shop').run()
+    app.button(key='export_run').click().run()
+    assert app.session_state['export_zip']
+    save_user_profile('my-shop',{'name':'내 판매처','status':'unverified','width':640})
+    app.run()
+    assert not app.exception
+    assert app.session_state['export_zip'] is None
+    app.button(key='export_run').click().run()
+    name,data=app.session_state['export_zip']
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        manifest=json.loads(archive.read('manifest.json'))
+        assert manifest['export']['profile']['values']['width']==640
+        assert all(p['width']==640 for p in manifest['pages'])

@@ -28,7 +28,6 @@ VALUE_FIELDS = ('width', 'max_height_per_image', 'max_file_bytes', 'max_images',
 # Used only to produce a result when a profile leaves a value empty (= the previous fixed output).
 FALLBACK = {'width': 860, 'max_height_per_image': 4000, 'formats': ['jpg'], 'jpeg_quality': 90}
 QUALITY_STEP = 5
-BLANK_TOLERANCE = 12  # grey levels; a row this uniform contains no text
 
 
 class Profile(BaseModel):
@@ -191,7 +190,7 @@ def current_bundle(job: Path) -> Path:
     manifest = json.loads((job / 'manifest.json').read_text(encoding='utf-8'))
     if manifest.get('review_accepted') and manifest.get('rendered_job'):
         bundle = job / manifest['rendered_job']
-        if bundle.is_dir():
+        if bundle.is_dir() and bundle_matches(job, bundle):
             return bundle
     preview = job / 'preview.json'
     if preview.is_file():
@@ -217,8 +216,10 @@ def _full_image(bundle: Path, manifest: dict) -> Image.Image:
 
 
 def _blank(image: Image.Image, y: int) -> bool:
-    low, high = image.crop((0, y, image.width, y + 1)).convert('L').getextrema()
-    return high - low <= BLANK_TOLERANCE
+    # Faint antialiased glyphs and different RGB colors can have the same grey value.
+    # Reject every nonuniform channel; prefer an export error to cutting a text row.
+    extrema = image.crop((0, y, image.width, y + 1)).convert('RGB').getextrema()
+    return all(low == high for low, high in extrema)
 
 
 def _cuts(image: Image.Image, sections: list[dict], limit: int):
@@ -343,8 +344,17 @@ def build_export_zip(folder: Path) -> tuple[str, bytes]:
     folder = Path(folder).resolve(strict=True)
     record = json.loads((folder / 'export.json').read_text(encoding='utf-8'))
     bundle = Path(record['source_bundle']).resolve(strict=True)
-    manifest = json.loads((bundle / 'manifest.json').read_text(encoding='utf-8'))
-    manifest['export'] = record
+    source = json.loads((bundle / 'manifest.json').read_text(encoding='utf-8'))
+    width = record['effective_values']['width']
+    scale = width / source['width']
+    # The top-level manifest describes files in this ZIP, not the original split.
+    # HTML/assets keep the source render; preserve its complete metadata explicitly.
+    manifest = {**source, 'source_render': source, 'export': record,
+                'width': width, 'height': sum(item['height'] for item in record['files']),
+                'max_height': record['effective_values']['max_height_per_image'],
+                'pages': record['files'],
+                'sections': [{**section, 'top': round(section['top'] * scale),
+                              'bottom': round(section['bottom'] * scale)} for section in source['sections']]}
     entries = {f['file']: folder / f['file'] for f in record['files']}
     for name in ('page.html', 'draft.json', 'review.json'):
         if (bundle / name).is_file():
