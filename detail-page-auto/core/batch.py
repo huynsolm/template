@@ -9,8 +9,10 @@ import csv
 import io
 import json
 import re
+import shutil
 import tempfile
 import zipfile
+from pathlib import PurePosixPath, PureWindowsPath
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +46,11 @@ NO = {'', '아니오', '아니요', 'n', 'no', 'false', '0', 'x'}
 PRODUCT_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$')
 MAX_PRODUCTS = 50
 MAX_BYTES = 5 * 1024 * 1024
+MAX_XLSX_ENTRIES = 1000
+MAX_XLSX_MEMBER_BYTES = 20 * 1024 * 1024
+MAX_XLSX_EXPANDED_BYTES = 50 * 1024 * 1024
+MAX_XLSX_COMPRESSION_RATIO = 200
+ANSWER_FILE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,39}\.txt$')
 STATUS_LABELS = {'input_error': '입력 오류', 'awaiting_answer': '프롬프트 대기', 'answer_error': '답변 오류',
                  'needs_review': '검수 필요', 'approved': '승인됨'}
 PRODUCT_FIELDS = {'name': '상품명', 'category': '카테고리', 'price': '가격', 'brand_color': '브랜드 색'}
@@ -100,18 +107,35 @@ def _rows(sheet: str, header: list, rows) -> list[tuple[int, dict]]:
     return out
 
 
-def _is_macro(path: Path) -> bool:
-    if path.suffix.lower() in ('.xlsm', '.xltm', '.xlam'):
-        return True
+def _xlsx_metadata(path: Path) -> tuple[list[str], str]:
+    """Inspect archive metadata before expanding XML so compressed input stays bounded."""
     try:
         with zipfile.ZipFile(path) as archive:
-            names = archive.namelist()
+            infos = archive.infolist()
+            if len(infos) > MAX_XLSX_ENTRIES:
+                raise ValueError(f'XLSX 압축 항목이 너무 많습니다 (최대 {MAX_XLSX_ENTRIES}개)')
+            expanded = sum(info.file_size for info in infos)
+            if expanded > MAX_XLSX_EXPANDED_BYTES:
+                raise ValueError(f'XLSX 압축 해제 크기가 상한({MAX_XLSX_EXPANDED_BYTES:,}바이트)을 넘습니다')
+            for info in infos:
+                if info.file_size > MAX_XLSX_MEMBER_BYTES:
+                    raise ValueError(f'XLSX 압축 해제 항목이 너무 큽니다: {info.filename}')
+                if (info.file_size >= 1024 * 1024 and info.compress_size > 0
+                        and info.file_size / info.compress_size > MAX_XLSX_COMPRESSION_RATIO):
+                    raise ValueError(f'XLSX 압축률이 비정상적으로 높습니다: {info.filename}')
+            names = [info.filename for info in infos]
             types = archive.read('[Content_Types].xml').decode('utf-8', 'replace') if '[Content_Types].xml' in names else ''
+            return names, types
     except zipfile.BadZipFile as exc:
         raise ValueError(f'XLSX 파일을 열 수 없습니다: {path.name}') from exc
+
+
+def _is_macro(path: Path) -> bool:
+    names, types = _xlsx_metadata(path)
     return any(n.lower().endswith('vbaproject.bin') for n in names) or 'macroEnabled' in types
 
 
+def read_sheets
 def read_sheets(source: Path, max_bytes: int = MAX_BYTES) -> dict[str, list[tuple[int, dict]]]:
     """XLSX workbook (stored values only, no formula evaluation) or a folder of UTF-8 CSV files."""
     source = Path(source)
@@ -137,12 +161,14 @@ def read_sheets(source: Path, max_bytes: int = MAX_BYTES) -> dict[str, list[tupl
         return sheets
     if not source.is_file():
         raise ValueError(f'입력 파일이 없습니다: {source}')
-    if _is_macro(source):
+    if source.suffix.lower() in ('.xlsm', '.xltm', '.xlam'):
         raise ValueError('매크로가 포함된 통합 문서(.xlsm 등)는 열지 않습니다. 매크로 없는 .xlsx로 저장하세요.')
     if source.suffix.lower() != '.xlsx':
         raise ValueError('XLSX 파일 또는 CSV 파일이 든 폴더만 지원합니다')
     if source.stat().st_size > max_bytes:
         raise ValueError(f'파일 크기가 상한({max_bytes:,}바이트)을 넘습니다')
+    if _is_macro(source):
+        raise ValueError('매크로가 포함된 통합 문서(.xlsm 등)는 열지 않습니다. 매크로 없는 .xlsx로 저장하세요.')
     from openpyxl import load_workbook
     try:
         book = load_workbook(source, read_only=True, data_only=True)  # stored values; formulas are not evaluated
@@ -247,6 +273,14 @@ def _validate_product(number, record, children, photo_root: Path):
         rows['reviews'].append(row)
     if not children['images']:
         errors.append(_error('products', number, '사진 폴더', 'images 시트에 이 상품의 사진이 없습니다'))
+    if len(reviews) > 10:
+        errors.append(_error('reviews', rows['reviews'][10], '후기', '후기는 상품마다 최대 10개까지 입력할 수 있습니다'))
+    distinct_images = set()
+    for index, image in enumerate(images):
+        distinct_images.add(image['path'])
+        if len(distinct_images) > 5:
+            errors.append(_error('images', rows['images'][index], '파일명', '사진은 상품마다 서로 다른 파일 최대 5개까지 입력할 수 있습니다'))
+            break
     if errors:
         return None, folder, theme, profile, errors
 
@@ -325,19 +359,42 @@ def import_batch(source: Path, photo_root: Path, output: Path, *, max_products: 
 
 # --- status ----------------------------------------------------------------------------------------
 
+def _source_name(value: str) -> str:
+    """Read a stored source basename on either Windows or POSIX after a batch is moved."""
+    return PureWindowsPath(value).name if '\\' in value else PurePosixPath(value).name
+
+
+def _approval_is_current(job: Path, accepted: Path, manifest: dict) -> bool:
+    """An approval is portable, but valid only for the exact source draft, facts and theme policy."""
+    if not manifest.get('source_job') or _source_name(str(manifest['source_job'])) != job.name:
+        return False
+    try:
+        if (job / 'draft.json').read_bytes() != (accepted / 'draft.json').read_bytes():
+            return False
+        if (job / 'facts.json').read_bytes() != (accepted / 'facts.json').read_bytes():
+            return False
+        source = read_json(job / 'manifest.json')
+        from .themes import load_theme
+        return (manifest.get('theme', 'classic') == source.get('theme', 'classic')
+                and manifest.get('contrast_policy') == load_theme(source.get('theme', 'classic')).contrast_policy)
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 def _accepted_for(job: Path) -> Path | None:
-    """Latest accepted job created from ``job`` by the normal ⑥ approval (accept_job)."""
+    """Latest current approval for ``job``; portable when the whole batch folder moves."""
     found = []
     for candidate in job.parent.glob('job-*'):
         manifest = candidate / 'manifest.json'
-        if candidate == job or not manifest.is_file():
+        if candidate == job or candidate.is_symlink() or not manifest.is_file():
             continue
         data = read_json(manifest)
-        if data.get('review_accepted') and data.get('source_job') and Path(data['source_job']).resolve() == job.resolve():
+        if data.get('review_accepted') and _approval_is_current(job, candidate, data):
             found.append((data.get('accepted_at', ''), candidate))
     return max(found)[1] if found else None
 
 
+def _status
 def _status(batch: Path, entry: dict) -> str:
     if not entry.get('job'):
         return 'input_error'
@@ -508,6 +565,26 @@ def ingest_answers(batch: Path, answers: Path) -> dict:
             report[pid] = {'result': 'error', 'message': str(exc)}
     _remember(batch, report)
     return report
+
+
+def ingest_uploaded_answers(batch: Path, uploads) -> dict:
+    """Ingest only files selected for this action; never replay persistent stale answers."""
+    batch = Path(batch).resolve(strict=True)
+    staging = Path(tempfile.mkdtemp(prefix='.answer-upload-', dir=batch))
+    try:
+        seen = set()
+        for name, payload in uploads:
+            if not isinstance(name, str) or '\\' in name or '/' in name or not ANSWER_FILE.fullmatch(name):
+                raise ValueError(f'답변 파일 이름은 <product_id>.txt여야 합니다: {name}')
+            if name in seen:
+                raise ValueError(f'답변 파일 이름이 중복됩니다: {name}')
+            seen.add(name)
+            if not isinstance(payload, bytes):
+                raise ValueError(f'답변 파일을 읽을 수 없습니다: {name}')
+            (staging / name).write_bytes(payload)
+        return ingest_answers(batch, staging)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def generate_batch(batch: Path, provider, max_attempts: int = 3) -> dict:

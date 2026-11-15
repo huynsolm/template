@@ -560,8 +560,6 @@ def export_section(bundle):
 
 STATUS_TEXT={'input_error':'입력 오류','awaiting_answer':'프롬프트 대기','answer_error':'답변 오류','needs_review':'검수 필요','approved':'승인됨'}
 BADGES={'input_error':'🔴 입력 오류','awaiting_answer':'🟡 프롬프트 대기','answer_error':'🟠 답변 오류','needs_review':'🔵 검수 필요','approved':'🟢 승인됨'}
-ANSWER_NAME=__import__('re').compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,39}\.txt$')
-
 
 def stage_batch_upload(files):
     """Save the uploaded sheet(s) inside outputs only, with fixed safe names."""
@@ -637,11 +635,8 @@ def batch_page():
     answers=st.file_uploader('답변 파일: <product_id>.txt (상품마다 하나)',type=['txt'],accept_multiple_files=True,key='batch_answers')
     if st.button('답변 수집·검증',key='batch_ingest',disabled=S.get('busy',False)):
         def run():
-            folder=batch/'answers'; folder.mkdir(exist_ok=True)
-            for f in answers or []:
-                if not ANSWER_NAME.fullmatch(Path(f.name).name): raise ValueError(f'답변 파일 이름은 <product_id>.txt여야 합니다: {f.name}')
-                (folder/Path(f.name).name).write_bytes(f.getvalue())
-            return B.ingest_answers(batch,folder)
+            uploads=[(Path(f.name).name,f.getvalue()) for f in answers or []]
+            return B.ingest_uploaded_answers(batch,uploads)
         ok,report=perform('답변 수집',run)
         if ok: S['batch_ingest_report']=report; st.rerun()
     report=S.get('batch_ingest_report') or {}
