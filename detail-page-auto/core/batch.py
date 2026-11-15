@@ -135,7 +135,6 @@ def _is_macro(path: Path) -> bool:
     return any(n.lower().endswith('vbaproject.bin') for n in names) or 'macroEnabled' in types
 
 
-def read_sheets
 def read_sheets(source: Path, max_bytes: int = MAX_BYTES) -> dict[str, list[tuple[int, dict]]]:
     """XLSX workbook (stored values only, no formula evaluation) or a folder of UTF-8 CSV files."""
     source = Path(source)
@@ -394,7 +393,6 @@ def _accepted_for(job: Path) -> Path | None:
     return max(found)[1] if found else None
 
 
-def _status
 def _status(batch: Path, entry: dict) -> str:
     if not entry.get('job'):
         return 'input_error'
