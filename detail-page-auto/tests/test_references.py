@@ -39,7 +39,9 @@ def with_references():
 
 
 def answer():
-    return json.loads((ROOT / 'samples/answer.txt').read_text(encoding='utf-8'))
+    # answer.txt is a chat-style answer (JSON inside a ```json block), so parse it the way ingest does.
+    from core.ingest import extract_json
+    return extract_json((ROOT / 'samples/answer.txt').read_text(encoding='utf-8'))
 
 
 def all_copy_text(document):

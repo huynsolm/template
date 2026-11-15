@@ -82,8 +82,9 @@ def test_template_has_sheets_headers_example_descriptions_and_dropdowns(tmp_path
     for sheet, headers in HEADERS.items():
         ws = book[sheet]
         assert [c.value for c in ws[1]] == headers
-        # one example row; reviews has none so that no invented review can reach a page by accident
-        if sheet == 'reviews':
+        # one example row; reviews and references have none so that no invented review or
+        # placeholder competitor text can reach a page or a prompt by accident
+        if sheet in ('reviews', 'references'):
             assert ws.max_row == 1
         else:
             assert ws.max_row >= 2
