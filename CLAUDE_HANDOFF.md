@@ -4,12 +4,14 @@
 
 - 저장소: `huynsolm/template`
 - 작업 브랜치: `ccr-f9c07036-vgvm5j`
-- 구현 기준 커밋: `91d8054347ede352b7609017e3fac61a8e2aa429`
+- 구현 기준 커밋: `9221d36` (M1~M4·M3는 `91d8054`, M5-A~D는 그 이후 커밋)
 - 앱 폴더: `detail-page-auto/`
 - 먼저 `AGENTS.md`, 이 문서, `detail-page-auto/README.md`를 읽는다.
-- 배경은 `PLAN_detail_page_automation.md`, 상세 요구사항은 `CODEX_TASK_M1.md`, `CODEX_TASK_M2.md`, `CODEX_TASK_M4.md`, `CODEX_TASK_M3.md`에 있다.
+- 배경은 `PLAN_detail_page_automation.md`, 상세 요구사항은 `CODEX_TASK_M1.md`, `CODEX_TASK_M2.md`, `CODEX_TASK_M4.md`, `CODEX_TASK_M3.md`, `CODEX_TASK_M5.md`에 있다. 작업별 보고·검수는 `M5_A_REPORT.md`, `M5_B_REPORT.md`, `M5_C_REPORT.md`, `M5_C_REVIEW.md`에 있다.
 
-**M1·M2·M4·M3 및 M4 마무리 수정은 이미 구현됐다.** 완료된 마일스톤을 처음부터 다시 구현하지 않는다. 사용자가 다음 작업으로 **M5를 지정했다**: `CODEX_TASK_M5.md`(M5-A 테마 → M5-B 플랫폼 프로필 → M5-C 일괄 생성 → M5-D 참고 자료)와 `AGENTS.md`를 따른다. 다중 사용자·배포와 URL 자동 수집은 M5에서도 제외됐다.
+**M1~M4·M3와 M5-A(테마)·M5-B(플랫폼 프로필)·M5-C(일괄 생성)·M5-D(참고 자료)는 모두 구현됐다(2026-11-16 기준).** 완료된 마일스톤을 처음부터 다시 구현하지 않는다. 계획서에 남은 구현 항목은 없으며, 다음 구현 범위는 사용자가 새로 지정한 요청으로 정한다. 다중 사용자·배포와 URL 자동 수집은 사용자 결정으로 제외됐다. `AGENTS.md`의 현재 작업 설명은 M5 지시서 기준으로 남아 있다.
+
+여러 작업자가 같은 브랜치에 동시에 커밋해 충돌·중복 작업이 생긴 적이 있다. 작업 전 반드시 `git fetch` 후 원격 상태를 확인하고, 이미 반영된 수정을 다시 하지 않는다.
 
 ## M5-A 현재 상태
 
@@ -26,9 +28,32 @@ M5-A 초기 구현은 `8cac895`에 있다. 이후 사용자 확정 기준으로 
 
 원격 선행 구현은 `251f0c0`이며 이후 검증·보완은 `M5_B_REPORT.md`를 따른다. `core/export.py`의 Profile/load_profile/list_profiles/save_user_profile/export_bundle/build_export_zip/current_bundle을 UI·CLI에서 공유한다. 프로필은 `profiles/<id>.toml`, 사용자 입력은 Git 제외 `profiles/user/`에 저장한다.
 
-smartstore·coupang은 값·출처·확인 날짜가 빈 `unverified` 템플릿이다. 공식 도움말을 직접 확인하지 않고 값을 채우지 않는다. 미확인 결과는 경고와 `.UNVERIFIED` ZIP 이름을 유지한다.
+coupang은 값·출처·확인 날짜가 빈 `unverified` 템플릿이다. smartstore는 공식 도움말에서 확인한 권장 폭 848px와 출처·확인 날짜만 들어 있고 나머지는 비어 있어 `unverified`다. 남은 값은 사용자가 공식 도움말에서 확인해야 한다. 공식 도움말을 직접 확인하지 않고 값을 채우지 않는다. 미확인 결과는 경고와 `.UNVERIFIED` ZIP 이름을 유지한다.
 
 내보내기는 섹션 경계 우선이며 섹션 내부는 RGB 모든 채널의 픽셀이 균일한 빈 행에서만 자른다. 회색조나 오차 허용으로 흐린 글자 행을 빈 행으로 처리하지 않는다. ZIP 최상위 pages/width/height/sections는 실제 내보낸 이미지 기준이며, 변환 전 렌더링 manifest는 source_render에 보존한다. HTML/assets는 원본 렌더링 자료다. 승인본도 현재 문구·테마·대비 정책과 일치해야 내보낸다. 프로필 값을 덮어쓰면 UI의 옛 검사 결과와 ZIP 캐시를 무효화한다.
+
+## M5-C 현재 상태
+
+구현 `83bf877`, 검수 `M5_C_REVIEW.md`(Important 5건), 수정 `3df24b3`·`d84a84b`(회귀 테스트 `4a9d0d9`). `core/batch.py`의 `read_sheets`, `import_batch`, `write_template`, `batch_status`, `list_batches`, `export_prompts`, `ingest_answers`, `ingest_uploaded_answers`, `generate_batch`, `export_batch`를 UI(사이드바 **작업 방식 → 일괄 작업**)와 CLI(`cli.py batch template|import|prompts|ingest|generate|status|export`)가 공유한다.
+
+- 입력: XLSX(`products`·`facts`·`images` 필수, `reviews`·`references` 선택) 또는 같은 이름의 UTF-8 CSV. 저장값만 읽고 매크로 파일은 거부한다. 압축 해제 전 항목 수·풀린 크기·압축률을 검사한다.
+- 템플릿의 `reviews`·`references` 시트에는 예시 행을 넣지 않는다(지어낸 후기·자리표시 경쟁사 문구가 페이지·프롬프트에 들어가지 않도록).
+- 폴더: `outputs/batch-<id>/products/<product_id>/job-*` + `batch.json`. 상태는 작업 폴더에서 다시 계산한다.
+- 승인 상태는 일괄 작업 폴더를 옮겨도 유지되고, 승인 후 원본 문구·테마가 바뀌면 검수 필요로 돌아가 내보내기에서 빠진다.
+- 화면 답변 수집은 이번에 올린 파일만 처리한다(`ingest_uploaded_answers`).
+- 일괄 승인 기능은 없다. 상품마다 ⑥ 체크리스트로 승인한다. 구독 CLI는 순차 실행하며 공급자 오류가 나면 즉시 멈춘다.
+- 의존성: openpyxl 3.1.5, et-xmlfile 2.0.0(MIT).
+
+## M5-D 현재 상태
+
+구현 `50947d8`(테스트 `ac33043`, 인코딩 수정 `366bd9a`, 테스트 픽스처 수정 `9221d36`). URL 자동 수집은 없고 사용자가 붙여넣은 텍스트만 쓴다.
+
+- `core/facts.py`: `ProductFacts.references`(id·label·kind·text 최대 5,000자·source_note), `reference_names`(경쟁사·브랜드 이름). 필드가 없는 기존 facts.json도 그대로 동작한다.
+- `prompts/copy_v2.md`: 참고 자료가 있을 때만 `<references>` 블록과 지시(그대로 쓰지 말 것, 참고 자료 수치·효능은 우리 사실이 아님, 경쟁사 이름·비교 광고 금지)를 넣는다. 참고 자료가 없으면 `copy_v1`과 같은 동작이다.
+- `core/similarity.py`: `similarity_matches`, `reference_reviews`(검수 사유 "참고 자료와 표현 유사"·"참고 자료의 경쟁사·브랜드 이름 포함", `detail`에 구간 위치), `personal_data_warnings`(이메일·전화번호·주문번호 형태, 자동 삭제 없음).
+- 참고 자료 id는 `fact_ids`로 인정되지 않는다(기존 "존재하지 않는 fact_ids" 검수 항목).
+- 화면: ① "참고 자료 (선택)" 입력과 저장 전 개인정보 경고, ④ 유사 구간 표시. `source_note`의 URL에는 접속하지 않는다.
+- `samples/answer.txt`는 코드 블록이 있는 채팅 답변 형식이다. 테스트에서 읽을 때 `core.ingest.extract_json`을 쓴다.
 
 ## 제품과 현재 흐름
 
@@ -141,12 +166,15 @@ UV_CACHE_DIR=/tmp/template-uv uv pip sync --python .venv/bin/python --require-ha
 git status --porcelain=v1
 ```
 
-마지막 구현 커밋에서 **210 passed, 0 failed, 0 skipped**와 테스트 후 빈 git status 출력을 확인했다. 이는 인계 시점의 기록이며 새 변경 후에는 다시 실행해 실제 결과를 보고한다.
+커밋 `9221d36`에서 **384 passed, 0 failed, 0 skipped**(Linux, Chromium 153, 약 15분)와 테스트 후 빈 git status 출력을 확인했다. 이는 인계 시점의 기록이며 새 변경 후에는 다시 실행해 실제 결과를 보고한다. 전체 실행이 길므로 작업 중에는 관련 테스트 파일만 먼저 돌리고 마지막에 전체를 돌린다.
 
 - 문구·워크플로: test_m2.py, test_providers.py, test_editor.py
 - 이미지: test_images.py, test_background.py, test_image_workflow.py, test_uploads.py
 - UI: test_app.py의 AppTest와 test_browser.py의 실제 로컬 Streamlit/Chromium
 - M1: test_m1.py의 실제 렌더링·분할·이동 검증
+- M5: test_themes.py, test_export.py, test_export_regressions.py, test_batch.py, test_references.py
+
+확인하지 못한 것: Windows에서의 `run_app.bat` 실행과 전체 테스트(`.github/workflows/m5c-windows.yml` 실행 결과 미확인), 실제 구독 CLI 연동, 실제 상품 사진·실제 채팅 AI 답변으로 만든 결과물의 품질.
 
 테스트는 고정 답변·가짜 CLI·가짜 제거기를 사용한다. 실제 모델 수동 확인만 별도로 실행한다.
 
@@ -169,7 +197,8 @@ README용 화면이 바뀌었을 때는 pytest와 별개로 `tools/make_screensh
 ```text
 huynsolm/template 저장소의 ccr-f9c07036-vgvm5j 브랜치에서 이어서 개발해줘.
 AGENTS.md, CLAUDE_HANDOFF.md, 관련 CODEX_TASK 문서와 README를 먼저 읽어줘.
-M1·M2·M3·M4는 91d8054에서 완료됐으니 처음부터 다시 구현하지 마.
+M1~M4와 M5-A~D는 모두 완료됐으니(기준 커밋 9221d36) 처음부터 다시 구현하지 마.
+작업 전에 git fetch로 원격에 이미 반영된 변경이 있는지 확인해줘.
 기존 공용 core와 테스트를 유지하면서 아래 작업만 구현해줘.
 
 다음 작업: [여기에 원하는 기능 또는 수정할 문제를 적기]
