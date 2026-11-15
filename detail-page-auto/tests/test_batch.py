@@ -445,3 +445,90 @@ def test_error_reasons_are_in_korean(tmp_path, photos):
     assert items['p2']['errors'][0]['reason'] == '한 글자 이상 입력해 주세요'
     assert items['p3']['errors'][0]['reason'] == '주장은 근거를 입력해야 합니다'
     assert items['p4']['errors'][0]['reason'] == '허가 확인이 "예"여야 합니다'
+
+
+# --- M5-C Codex Important regressions -------------------------------------------------------------
+
+def test_approved_status_survives_batch_move(batch, tmp_path):
+    from core.workflow import accept_job
+    answers = tmp_path / 'move-answers'; answers.mkdir()
+    (answers / 'p1.txt').write_text(ANSWER, encoding='utf-8')
+    ingest_answers(batch, answers)
+    accept_job(batch / entries(batch)['p1']['job'])
+    assert statuses(batch)['p1'] == 'approved'
+
+    destination = tmp_path / 'moved'; destination.mkdir()
+    moved = Path(shutil.move(str(batch), destination))
+    assert statuses(moved)['p1'] == 'approved'
+
+
+@pytest.mark.parametrize('change', ['copy', 'theme'])
+def test_source_change_invalidates_approval_and_export(batch, tmp_path, change):
+    from core.batch import export_batch
+    from core.workflow import accept_job
+    answers = tmp_path / ('freshness-' + change); answers.mkdir()
+    (answers / 'p1.txt').write_text(ANSWER, encoding='utf-8')
+    ingest_answers(batch, answers)
+    source = batch / entries(batch)['p1']['job']
+    accept_job(source)
+    assert statuses(batch)['p1'] == 'approved'
+
+    if change == 'copy':
+        draft = json.loads((source / 'draft.json').read_text(encoding='utf-8'))
+        draft['sections'][0]['headline'] = '승인 뒤 바뀐 문구'
+        (source / 'draft.json').write_text(json.dumps(draft, ensure_ascii=False) + '\n', encoding='utf-8')
+    else:
+        manifest = json.loads((source / 'manifest.json').read_text(encoding='utf-8'))
+        manifest['theme'] = 'bold'
+        (source / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False) + '\n', encoding='utf-8')
+
+    assert statuses(batch)['p1'] == 'needs_review'
+    with pytest.raises(ValueError, match='승인'):
+        export_batch(batch)
+
+
+def test_uploaded_answers_process_only_current_files(batch):
+    from core.batch import ingest_uploaded_answers
+    persistent = batch / 'answers'; persistent.mkdir()
+    (persistent / 'p1.txt').write_text('{"stale": "invalid"}', encoding='utf-8')
+
+    report = ingest_uploaded_answers(batch, [('p2.txt', ANSWER.encode('utf-8'))])
+
+    assert report['p1']['result'] == 'missing'
+    assert report['p2']['result'] == 'ok'
+    assert statuses(batch) == {'p1': 'awaiting_answer', 'p2': 'needs_review', 'p3': 'awaiting_answer'}
+    assert not list(batch.glob('.answer-upload-*'))
+
+
+def test_xlsx_expansion_is_bounded_before_xml_is_read(tmp_path, photos):
+    path = tmp_path / 'compressed-bomb.xlsx'
+    expanded = b'A' * (21 * 1024 * 1024)
+    with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('[Content_Types].xml', expanded)
+    assert path.stat().st_size < 5 * 1024 * 1024
+
+    with pytest.raises(ValueError, match='압축 해제'):
+        import_batch(path, photos, tmp_path / 'out')
+
+
+@pytest.mark.parametrize(
+    ('kind', 'expected'),
+    [('reviews', ('reviews', 12, '후기')), ('images', ('images', 7, '파일명'))],
+)
+def test_aggregate_limits_report_first_excess_source_cell(tmp_path, photos, kind, expected):
+    reviews = []
+    images = [image_for('p1')]
+    if kind == 'reviews':
+        reviews = [
+            {'product_id': 'p1', '후기': f'실제 후기 {i}', '별점': 5, '출처': '스토어', '허가 확인': '예'}
+            for i in range(1, 12)
+        ]
+    else:
+        for i in range(1, 6):
+            name = f'extra-{i}.png'
+            shutil.copyfile(photos / 'p1' / 'main.png', photos / 'p1' / name)
+            images.append(image_for('p1', name))
+
+    book = make_book(tmp_path / f'{kind}.xlsx', [product('p1')], facts_for('p1'), images, reviews)
+    batch = import_batch(book, photos, tmp_path / 'out')
+    assert location(batch, 'p1') == [expected]
