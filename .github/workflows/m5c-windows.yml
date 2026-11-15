@@ -1,4 +1,4 @@
-name: M5-C Windows verification
+name: M5-C verification
 
 on:
   push:
@@ -7,9 +7,38 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: '1'
+
 jobs:
-  regressions:
+  windows-regressions:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: detail-page-auto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: detail-page-auto/requirements.lock
+      - run: python -m pip install --require-hashes -r requirements.lock
+      - run: python -m playwright install chromium
+      - name: Run M5-C Windows regressions
+        run: python -m pytest -q tests/test_batch.py -k "approved_status_survives_batch_move or source_change_invalidates_approval_and_export or uploaded_answers_process_only_current_files or xlsx_expansion_is_bounded_before_xml_is_read or aggregate_limits_report_first_excess_source_cell"
+      - name: Verify clean Windows worktree
+        working-directory: .
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain=v1
+          if ($changes) {
+            $changes
+            throw "Tests changed tracked or untracked repository files"
+          }
+
+  full-suite:
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: detail-page-auto
@@ -24,12 +53,6 @@ jobs:
       - run: python -m playwright install chromium
       - name: Run complete test suite
         run: python -m pytest -q
-      - name: Verify clean worktree
+      - name: Verify clean Linux worktree
         working-directory: .
-        shell: pwsh
-        run: |
-          $changes = git status --porcelain=v1
-          if ($changes) {
-            $changes
-            throw "Tests changed tracked or untracked repository files"
-          }
+        run: test -z "$(git status --porcelain=v1)"
