@@ -399,3 +399,45 @@ def test_overwriting_export_profile_invalidates_visible_zip(monkeypatch,tmp_path
         manifest=json.loads(archive.read('manifest.json'))
         assert manifest['export']['profile']['values']['width']==640
         assert all(p['width']==640 for p in manifest['pages'])
+
+
+def test_batch_screen_resume_status_open_product_and_exports(monkeypatch,tmp_path):
+    import shutil
+    from core.batch import import_batch,ingest_answers
+    from core.workflow import accept_job
+    sys.path.insert(0,str(ROOT/'tests'))
+    from test_batch import make_book,product,facts_for,image_for
+    monkeypatch.setenv('DETAIL_PAGE_OUTPUTS',str(tmp_path/'outputs'))
+    photos=tmp_path/'photos'
+    for pid in ('a1','a2','bad'):
+        (photos/pid).mkdir(parents=True); shutil.copyfile(ROOT/'samples/product-hires.png',photos/pid/'main.png')
+    book=make_book(tmp_path/'b.xlsx',[product('a1'),product('a2'),product('bad',상품명='')],facts_for('a1')+facts_for('a2')+facts_for('bad'),[image_for('a1'),image_for('a2'),image_for('bad')])
+    batch=import_batch(book,photos,tmp_path/'outputs')
+    answers=tmp_path/'answers'; answers.mkdir()
+    (answers/'a1.txt').write_text((ROOT/'samples/answer.txt').read_text(),encoding='utf-8')
+    ingest_answers(batch,answers)
+    entries={e['product_id']:e for e in json.loads((batch/'batch.json').read_text())['products']}
+    accept_job(batch/entries['a1']['job'])
+
+    # a fresh session = the screen was closed and reopened
+    app=AppTest.from_file(str(ROOT/'app/main.py'),default_timeout=120).run()
+    app.sidebar.selectbox(key='mode').set_value('일괄 작업').run()
+    app.selectbox(key='batch_resume').set_value(str(batch)); app.button(key='batch_open').click().run()
+    assert not app.exception
+    table=app.dataframe[0].value
+    assert list(table['상태'])==['🟢 승인됨','🟡 프롬프트 대기','🔴 입력 오류']
+    assert any('bad' in e.value and '상품명' in e.value for e in app.error)
+    assert not [b for b in app.button if b.key=='batch_product_bad']          # nothing to open for input errors
+    app.button(key='batch_prompts').click().run()
+    name,payload=app.session_state['batch_prompts_zip']
+    assert zipfile.ZipFile(io.BytesIO(payload)).namelist()==['prompts/a2.md']
+    app.button(key='batch_export').click().run()
+    name,payload,report=app.session_state['batch_export_result']
+    assert {n.split('/')[0] for n in zipfile.ZipFile(io.BytesIO(payload)).namelist()}=={'a1','batch-export.json'}
+    assert report['a2']['result']=='skipped'
+    # opening a product continues in the normal ①~⑦ screens; approval stays per product
+    app.button(key='batch_product_a2').click().run()
+    assert not app.exception
+    assert app.session_state['mode']=='상품 하나씩'
+    assert Path(app.session_state['job'])==batch/entries['a2']['job']
+    assert app.session_state['stage']=='② 프롬프트'

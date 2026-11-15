@@ -558,6 +558,120 @@ def export_section(bundle):
                 st.rerun()
 
 
+STATUS_TEXT={'input_error':'입력 오류','awaiting_answer':'프롬프트 대기','answer_error':'답변 오류','needs_review':'검수 필요','approved':'승인됨'}
+BADGES={'input_error':'🔴 입력 오류','awaiting_answer':'🟡 프롬프트 대기','answer_error':'🟠 답변 오류','needs_review':'🔵 검수 필요','approved':'🟢 승인됨'}
+ANSWER_NAME=__import__('re').compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,39}\.txt$')
+
+
+def stage_batch_upload(files):
+    """Save the uploaded sheet(s) inside outputs only, with fixed safe names."""
+    from core.batch import HEADERS
+    folder=outputs()/'.batch-uploads'/uuid.uuid4().hex
+    folder.mkdir(parents=True)
+    if len(files)==1 and files[0].name.lower().endswith('.xlsx'):
+        path=folder/'products.xlsx'; path.write_bytes(files[0].getvalue()); return path
+    if any(not f.name.lower().endswith('.csv') for f in files):
+        raise ValueError('XLSX 파일 1개 또는 CSV 파일(products.csv, facts.csv, images.csv, reviews.csv)을 올려 주세요. 매크로 파일(.xlsm)은 받지 않습니다.')
+    for f in files:
+        name=Path(f.name).name.lower()
+        if name.removesuffix('.csv') not in HEADERS: raise ValueError(f'알 수 없는 CSV 파일 이름: {f.name} (products/facts/images/reviews.csv)')
+        (folder/name).write_bytes(f.getvalue())
+    return folder
+
+
+def open_batch_product(entry,batch):
+    """Open one product's job in the normal ①~⑦ screens (approval stays per product)."""
+    target=batch/(entry['accepted_job'] or entry['job'])
+    index={'approved':6,'needs_review':3,'answer_error':2}.get(entry['status'],1)
+    S['mode_next']='상품 하나씩'
+    schedule_open(target,index)
+
+
+def batch_page():
+    from core import batch as B
+    st.header('일괄 작업')
+    st.caption('표(XLSX 또는 CSV)로 여러 상품의 작업을 한 번에 만들고, 상품별로 붙여넣기·검수·승인합니다. 일괄 승인은 없습니다. 승인된 상품만 묶어 내보냅니다.')
+    import tempfile
+    with tempfile.TemporaryDirectory() as folder:
+        template=B.write_template(Path(folder)/'상품목록.xlsx').read_bytes()
+    st.download_button('빈 상품 목록 템플릿(XLSX) 받기',data=template,file_name='상품목록.xlsx',key='batch_template')
+    with st.expander('새 일괄 작업 가져오기',expanded=not S.get('batch')):
+        files=st.file_uploader('상품 목록: XLSX 1개 또는 CSV 4개(UTF-8)',type=['xlsx','csv'],accept_multiple_files=True,key='batch_upload')
+        root=st.text_input('사진 루트 폴더 (이 컴퓨터의 폴더 경로, 사진 폴더 열은 이 아래만 허용)',key='batch_photo_root')
+        if st.button('가져오기',key='batch_import',disabled=S.get('busy',False)):
+            def run():
+                if not files: raise ValueError('상품 목록 파일을 올려 주세요.')
+                if not root.strip(): raise ValueError('사진 루트 폴더를 입력해 주세요.')
+                return B.import_batch(stage_batch_upload(files),Path(root.strip()).expanduser(),outputs())
+            ok,folder=perform('일괄 가져오기',run)
+            if ok: S['batch']=str(folder); st.rerun()
+    batches=B.list_batches(outputs())
+    if batches:
+        labels={b['path']:f"{Path(b['path']).name} · {b['source']} · {b['count']}개 · {display_time(b['created_at'])}" for b in batches}
+        chosen=st.selectbox('이전 일괄 작업',list(labels),format_func=lambda v:labels[v],key='batch_resume')
+        if st.button('일괄 작업 열기',key='batch_open'):
+            S['batch']=chosen; st.rerun()
+    if not S.get('batch'): return
+    batch=Path(S['batch'])
+    try:
+        entries=B.batch_status(batch); data=B.load_batch(batch)
+    except (OSError,ValueError) as exc:
+        st.error('일괄 작업을 열 수 없습니다: '+str(exc)); return
+    st.subheader('상품 목록 · '+batch.name)
+    for error in data['errors']:
+        st.error(f"{error['sheet']} 시트 {error['row']}행 · {error['column']} 열: {error['reason']}")
+    st.dataframe([{'상품':e['product_id'],'상품명':e['name'],'상태':BADGES[e['status']],'테마':e['theme'],'프로필':e['profile'],'메시지':e.get('message','')} for e in entries],hide_index=True,width='stretch')
+    for entry in entries:
+        pid=entry['product_id']
+        for error in entry['errors']:
+            st.error(f"{pid}: {error['sheet']} 시트 {error['row']}행 · {error['column']} 열: {error['reason']}")
+        if entry['job'] and st.button(f'{pid} 열기 ({STATUS_TEXT[entry["status"]]})',key=f'batch_product_{pid}'):
+            open_batch_product(entry,batch)
+    st.subheader('붙여넣기 방식')
+    if st.button('대기 중인 상품의 프롬프트 ZIP 만들기',key='batch_prompts'):
+        ok,result=perform('프롬프트 묶기',lambda:B.export_prompts(batch))
+        if ok: S['batch_prompts_zip']=(result[1],result[2])
+    if S.get('batch_prompts_zip'):
+        name,payload=S['batch_prompts_zip']
+        st.download_button('프롬프트 ZIP 다운로드 (상품마다 별도 채팅에 붙여넣기)',data=payload,file_name=name,key='batch_prompts_download')
+    answers=st.file_uploader('답변 파일: <product_id>.txt (상품마다 하나)',type=['txt'],accept_multiple_files=True,key='batch_answers')
+    if st.button('답변 수집·검증',key='batch_ingest',disabled=S.get('busy',False)):
+        def run():
+            folder=batch/'answers'; folder.mkdir(exist_ok=True)
+            for f in answers or []:
+                if not ANSWER_NAME.fullmatch(Path(f.name).name): raise ValueError(f'답변 파일 이름은 <product_id>.txt여야 합니다: {f.name}')
+                (folder/Path(f.name).name).write_bytes(f.getvalue())
+            return B.ingest_answers(batch,folder)
+        ok,report=perform('답변 수집',run)
+        if ok: S['batch_ingest_report']=report; st.rerun()
+    report=S.get('batch_ingest_report') or {}
+    for name in report.get('unknown_files',[]): st.warning('상품이 없는 답변 파일: '+name)
+    import tomllib
+    configuration=tomllib.loads((ROOT/'providers.toml').read_text())
+    enabled=[name for name,value in configuration.get('providers',{}).items() if value.get('command') and value.get('configured',True)]
+    if enabled:
+        with st.expander('선택: 로그인된 공식 CLI로 순차 생성'):
+            st.caption('대기 중인 상품을 하나씩 처리합니다. 사용량 한도에 걸리면 즉시 멈추고 남은 상품은 대기로 둡니다.')
+            name=st.selectbox('구독 CLI',enabled,key='batch_provider')
+            if st.button('순차 생성',key='batch_generate',disabled=S.get('busy',False)):
+                from core.providers import CliProvider
+                ok,result=perform('구독 CLI 순차 생성',lambda:B.generate_batch(batch,CliProvider(name)))
+                if ok and result['stopped']:
+                    S['last_error']='구독 CLI가 중단되어 남은 상품은 프롬프트 대기로 두었습니다. 붙여넣기 방식으로 이어가세요.'
+                st.rerun()
+    st.subheader('승인된 상품 내보내기')
+    st.caption('상품마다 열어서 ⑥ 확인 항목을 체크해 승인한 상품만 묶습니다. 각 상품의 프로필로 검사하며 "규격 미확인" 경고는 상품 폴더의 manifest에 남습니다.')
+    if st.button('승인된 상품 ZIP 만들기',key='batch_export',disabled=S.get('busy',False)):
+        ok,result=perform('승인된 상품 내보내기',lambda:B.export_batch(batch))
+        S['batch_export_result']=result if ok else None
+    if S.get('batch_export_result'):
+        name,payload,outcome=S['batch_export_result']
+        for pid,item in outcome.items():
+            if item['result']!='ok': st.warning(f'{pid}: {item["message"]}')
+            for warning in item.get('warnings',[]): st.warning(f'{pid}: {warning}')
+        st.download_button('승인된 상품 ZIP 다운로드',data=payload,file_name=name,key='batch_export_download')
+
+
 def main():
     st.set_page_config(page_title='상세페이지 만들기',page_icon='🛍',layout='wide')
     if 'pending_job' in S: open_job(S.pop('pending_job'))
@@ -565,9 +679,15 @@ def main():
     for key,value in [('job',''),('bundle',''),('busy',False),('last_error',''),('stage',STEPS[0])]:
         if key not in S: S[key]=value
     if 'next_stage' in S: S['stage']=S.pop('next_stage')
+    if 'mode_next' in S: S['mode']=S.pop('mode_next')
     st.title('상품 상세페이지 만들기')
     st.caption('상품 사실을 넣고 → 채팅에 붙여넣고 → 검수한 뒤 이미지로 저장하세요. 로컬 전용 · AI API 사용 없음')
     from core.editor import job_listing
+    with st.sidebar:
+        mode=st.selectbox('작업 방식',['상품 하나씩','일괄 작업'],key='mode')
+    if mode=='일괄 작업':
+        if S.get('last_error'): st.error(S['last_error'])
+        batch_page(); return
     with st.sidebar:
         st.header('작업 이어하기')
         if st.button('새 작업 시작'):

@@ -1,4 +1,4 @@
-# 상세페이지 자동화 — M1 + M2 + M3 + M4 + M5-A(테마)·M5-B(내보내기 프로필)
+# 상세페이지 자동화 — M1 + M2 + M3 + M4 + M5-A(테마)·M5-B(내보내기 프로필)·M5-C(일괄 생성)
 
 Python 3.12에서 로컬 JSON과 PNG/JPEG를 받아 HTML과 폭 860px JPG를 만듭니다. M2는 구독 채팅의 붙여넣기 또는 공식 CLI로 문구 초안을 받습니다. M3는 원본을 보존하며 방향·색 공간·크기를 정리하고 선택적으로 로컬 배경 제거를 지원합니다. M4는 단일 사용자용 로컬 Streamlit 화면을 제공합니다. 유료 API·외부 이미지 서비스·크롤링·배포 기능은 포함하지 않습니다.
 
@@ -84,6 +84,34 @@ CLI의 M1 렌더링, `ingest`, `generate`, `accept`에도 `--theme classic|minim
 | 검수·문구 수정 | 미리보기 | 승인 후 다운로드 |
 |---|---|---|
 | ![검수 화면](docs/images/03-review.png) | ![DRAFT 미리보기](docs/images/04-preview.png) | ![승인 결과 다운로드](docs/images/05-download.png) |
+
+### 여러 상품 한 번에 만들기 (일괄 작업)
+
+사이드바 **작업 방식**에서 **일괄 작업**을 고릅니다.
+
+1. **빈 상품 목록 템플릿(XLSX) 받기**로 `상품목록.xlsx`를 받습니다. 시트는 `products`(상품 1행 = 1개), `facts`(판매자가 확인한 사실), `images`(사진 파일 이름·역할·배경 제거 여부), `reviews`(선택, 실제 후기와 허가 확인)입니다. 열 이름에 마우스를 올리면 설명이 보이고, 테마·종류·역할 등은 목록에서 고를 수 있습니다. `example-1` 예시 행은 지우거나 실제 상품으로 바꾸세요. 후기 시트에는 예시를 넣지 않았습니다(AI는 후기·별점·가격을 만들지 않습니다).
+2. 상품마다 사진을 폴더 하나에 모으고, 그 폴더들을 담은 **사진 루트 폴더**를 정합니다. `products`의 **사진 폴더** 열에는 루트 아래 폴더 이름만 씁니다. 루트 밖 경로·`..`·절대 경로는 거부합니다.
+3. 상품 목록 파일을 올리고 사진 루트 폴더 경로를 입력한 뒤 **가져오기**를 누릅니다. CSV를 쓰려면 같은 구조의 `products.csv`·`facts.csv`·`images.csv`(·`reviews.csv`)를 **UTF-8**(BOM 허용)로 저장해 함께 올립니다. 다른 인코딩이면 오류를 보여 줍니다. 수식은 계산하지 않고 엑셀에 저장된 값만 읽으며, 매크로 파일(`.xlsm`)은 열지 않습니다. 한 번에 최대 50개 상품, 파일 5MB까지입니다.
+4. 오류가 있는 상품만 빠지고 나머지는 작업이 만들어집니다. 오류는 **시트·행(엑셀 행 번호)·열·원인**으로 표시됩니다. 표의 상태: 🔴 입력 오류 · 🟡 프롬프트 대기 · 🟠 답변 오류 · 🔵 검수 필요 · 🟢 승인됨.
+5. **대기 중인 상품의 프롬프트 ZIP 만들기**로 상품별 `prompts/<product_id>.md`를 받습니다. 프롬프트 하나에 여러 상품을 섞지 않으니, 상품마다 **새 채팅**에 붙여넣으세요. 답변을 `<product_id>.txt`로 저장해 **답변 파일**에 한꺼번에 올리고 **답변 수집·검증**을 누르면 상품별로 검증합니다. 형식이 틀린 상품은 답변 오류가 되고, 다음 프롬프트 ZIP에는 그 상품의 수정 요청 프롬프트가 들어갑니다.
+6. 구독 CLI가 설정돼 있으면 **순차 생성**으로 상품을 하나씩 처리할 수 있습니다. 사용량 한도에 걸리면 즉시 멈추고(다시 시도해 한도를 쓰지 않음) 남은 상품은 프롬프트 대기로 둡니다.
+7. **일괄 승인은 없습니다.** 상품마다 **열기**를 눌러 ①~⑦ 화면에서 검수·수정하고 ⑥ 확인 항목을 체크해 승인하세요.
+8. **승인된 상품 ZIP 만들기**는 승인한 상품만 상품별 폴더로 묶고, 각 상품의 프로필로 규격을 검사합니다. 승인 안 된 상품은 빠지며 이유가 표시됩니다.
+9. 작업은 `outputs/batch-<id>/`(상품별 작업 폴더와 `batch.json`)에 남습니다. 화면을 닫았다가 **이전 일괄 작업 → 일괄 작업 열기**로 이어서 할 수 있고, 상태는 작업 폴더에서 다시 계산합니다.
+
+명령으로는 다음과 같이 씁니다.
+
+```bash
+.venv/bin/python cli.py batch template --output 상품목록.xlsx
+.venv/bin/python cli.py batch import --input 상품목록.xlsx --photos ~/상품사진 --output outputs
+.venv/bin/python cli.py batch prompts --batch outputs/batch-XXXX --output prompts.zip
+.venv/bin/python cli.py batch ingest --batch outputs/batch-XXXX --answers answers/
+.venv/bin/python cli.py batch generate --batch outputs/batch-XXXX --provider claude
+.venv/bin/python cli.py batch status --batch outputs/batch-XXXX
+.venv/bin/python cli.py batch export --batch outputs/batch-XXXX --output approved.zip
+```
+
+XLSX 읽기에는 **openpyxl 3.1.5 (MIT)**와 그 의존성 **et-xmlfile 2.0.0 (MIT)**를 씁니다. 둘 다 해시가 고정된 `requirements.lock`에 들어 있습니다.
 
 ## CLI로 사용하기
 

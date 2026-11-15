@@ -28,6 +28,57 @@ def m1(argv):
     return render(document,args.images,args.output,args.max_height,args.png,theme=args.theme)
 
 
+def run_batch(args):
+    from core import batch as B
+    command=args.batch_command
+    if command=='template':
+        return B.write_template(args.output)
+    if command=='import':
+        folder=B.import_batch(args.input,args.photos,args.output,max_products=args.max_products)
+        data=B.load_batch(folder)
+        for error in data['errors']+[e for p in data['products'] for e in p['errors']]:
+            print(f"ERROR: {error['sheet']} {error['row']}행 {error['column']}: {error['reason']}",file=sys.stderr)
+        return folder
+    if command=='status':
+        for entry in B.batch_status(args.batch):
+            print(f"{entry['product_id']}\t{B.STATUS_LABELS[entry['status']]}\t{entry.get('message','')}")
+        return Path(args.batch)
+    if command=='prompts':
+        folder,name,data=B.export_prompts(args.batch)
+        if args.output:
+            args.output.write_bytes(data); return args.output
+        return folder
+    if command=='ingest':
+        report=B.ingest_answers(args.batch,args.answers)
+        for pid,outcome in report.items():
+            if pid=='unknown_files':
+                for name in outcome: print('WARNING: 상품이 없는 답변 파일: '+name,file=sys.stderr)
+            elif outcome['result'] in ('error','missing'):
+                print(f"{'ERROR' if outcome['result']=='error' else 'WARNING'}: {pid}: {outcome['message']}",file=sys.stderr)
+        return Path(args.batch)
+    if command=='generate':
+        from core.providers import CliProvider
+        provider=CliProvider(args.provider,config_path=args.providers_config,timeout=args.timeout)
+        outcome=B.generate_batch(args.batch,provider,max_attempts=args.max_attempts)
+        for pid,item in outcome['products'].items():
+            if item['result']=='error': print(f'ERROR: {pid}: {item["message"]}',file=sys.stderr)
+        if outcome['stopped']:
+            usage='usage limit' in outcome['reason']
+            error=ValueError(('구독 사용량 한도에 도달해 즉시 중단했습니다. ' if usage else 'CLI 오류로 중단했습니다: '+outcome['reason']+' ')+'남은 상품은 프롬프트 대기로 두었습니다. 붙여넣기 방식(batch prompts / batch ingest)으로 이어가세요.')
+            error.exit_code=5 if usage else 7
+            raise error
+        return Path(args.batch)
+    if command=='export':
+        name,data,report=B.export_batch(args.batch)
+        for pid,outcome in report.items():
+            if outcome['result']!='ok': print(f'{pid}: {outcome["message"]}',file=sys.stderr)
+            for warning in outcome.get('warnings',[]): print(f'WARNING: {pid}: {warning}',file=sys.stderr)
+        target=args.output or Path(args.batch)/name
+        target.write_bytes(data)
+        return target
+    raise ValueError('unknown batch command')
+
+
 def main(argv=None):
     argv=list(sys.argv[1:] if argv is None else argv)
     try:
@@ -36,6 +87,24 @@ def main(argv=None):
         else:
             parser=argparse.ArgumentParser(description='M2: 상품 사실 → 붙여넣기 프롬프트 → 문구 검증. M1: --input ...')
             sub=parser.add_subparsers(dest='command',required=True)
+            batch=sub.add_parser('batch',help='시트(XLSX/CSV)로 여러 상품 일괄 처리 (일괄 승인 없음)')
+            bsub=batch.add_subparsers(dest='batch_command',required=True)
+            b=bsub.add_parser('template',help='빈 상품 목록 XLSX 템플릿 만들기'); b.add_argument('--output',type=Path,required=True)
+            b=bsub.add_parser('import',help='상품 목록을 읽어 상품별 작업 만들기')
+            b.add_argument('--input',type=Path,required=True,help='.xlsx 또는 products.csv 등이 든 폴더')
+            b.add_argument('--photos',type=Path,required=True,help='사진 루트 폴더 (사진 폴더 열은 이 아래만 허용)')
+            b.add_argument('--output',type=Path,required=True)
+            b.add_argument('--max-products',type=int,default=50)
+            b=bsub.add_parser('prompts',help='상품별 프롬프트 파일과 ZIP'); b.add_argument('--batch',type=Path,required=True); b.add_argument('--output',type=Path)
+            b=bsub.add_parser('ingest',help='answers/<product_id>.txt 답변 일괄 수집'); b.add_argument('--batch',type=Path,required=True); b.add_argument('--answers',type=Path,required=True)
+            b=bsub.add_parser('generate',help='구독 CLI로 상품별 순차 생성 (사용량 한도 시 즉시 중단)')
+            b.add_argument('--batch',type=Path,required=True)
+            b.add_argument('--provider',choices=['claude','codex','gemini'],required=True)
+            b.add_argument('--providers-config',type=Path,default=Path(__file__).parent/'providers.toml')
+            b.add_argument('--max-attempts',type=int,default=3)
+            b.add_argument('--timeout',type=float,default=300)
+            b=bsub.add_parser('status',help='상품별 상태'); b.add_argument('--batch',type=Path,required=True)
+            b=bsub.add_parser('export',help='승인된 상품만 상품별 프로필로 ZIP'); b.add_argument('--batch',type=Path,required=True); b.add_argument('--output',type=Path)
             images=sub.add_parser('images',help='사진 처리만 실행 (AI 호출 없음)')
             images.add_argument('--facts',type=Path,required=True)
             images.add_argument('--images',type=Path,required=True)
@@ -82,7 +151,9 @@ def main(argv=None):
                 terms=json.loads(args.review_terms.read_text(encoding='utf-8'))
                 if not isinstance(terms,list) or not all(isinstance(t,str) and t for t in terms):
                     raise ValueError('review-terms must be a JSON array of nonempty strings')
-            if args.command=='images':
+            if args.command=='batch':
+                result=run_batch(args)
+            elif args.command=='images':
                 result=create_job(read_facts(args.facts),args.images,args.output,method='images')
                 meta=json.loads((result/'manifest.json').read_text())
                 for warning in meta.get('image_reviews',[]): print('WARNING: '+warning['reason'],file=sys.stderr)
