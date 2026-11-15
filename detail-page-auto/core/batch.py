@@ -1,9 +1,9 @@
 """M5-C: create many product jobs from one sheet (XLSX or CSV) and track them as a batch.
 
 Each product becomes an ordinary job (``create_job``) under ``outputs/batch-<id>/products/<product_id>/``.
-Broken products are excluded with errors located as sheet·row·column·reason (Excel row numbers);
+Broken products are excluded with errors located as sheet��row��column��reason (Excel row numbers);
 the rest continue. Prompts never mix products. There is no bulk approval: every product goes
-through the normal ⑥ checklist; only approved products are exported.
+through the normal �� checklist; only approved products are exported.
 """
 import csv
 import io
@@ -22,27 +22,31 @@ from .facts import ProductFacts
 from .workflow import create_job, read_json, write_json
 
 HEADERS = {
-    'products': ['product_id', '상품명', '카테고리', '가격', '브랜드 색', '테마', '프로필', '사진 폴더', '안내 문구'],
-    'facts': ['product_id', 'fact_id', '문구', '종류', '근거'],
-    'images': ['product_id', '파일명', '역할', '배경 제거 여부'],
-    'reviews': ['product_id', '후기', '별점', '출처', '허가 확인'],
+    'products': ['product_id', '��ǰ��', 'ī�װ���', '����', '�귣�� ��', '�׸�', '������', '���� ����', '�ȳ� ����'],
+    'facts': ['product_id', 'fact_id', '����', '����', '�ٰ�'],
+    'images': ['product_id', '���ϸ�', '����', '��� ���� ����'],
+    'reviews': ['product_id', '�ı�', '����', '��ó', '�㰡 Ȯ��'],
+    'references': ['product_id', 'reference_id', '��', '����', '����', '��ó �޸�'],
 }
 REQUIRED_SHEETS = ('products', 'facts', 'images')
 DESCRIPTIONS = {
-    'product_id': '상품을 구분하는 이름. 영문·숫자·-·_ 1~40자. 파일 이름에 쓰입니다.',
-    '상품명': '상품 이름 (필수)', '카테고리': '분류 (필수)', '가격': '판매 가격 문구 (필수). AI는 가격을 만들지 않습니다.',
-    '브랜드 색': '#RRGGBB 형식 (예: #305b46)', '테마': 'classic(기본) / minimal / bold', '프로필': '내보내기 프로필: generic(기본) / smartstore / coupang / 사용자 프로필 이름',
-    '사진 폴더': '사진 루트 폴더 아래의 상품별 폴더 이름. 루트 밖 경로는 쓸 수 없습니다.', '안내 문구': '구매 안내(선택)',
-    'fact_id': '사실 id (상품 안에서 중복 불가). AI 답변의 근거로 쓰입니다.', '문구': '판매자가 확인한 사실 문장 (최대 500자)',
-    '종류': '스펙 / 특징 / 사용법 / 주장 / 기타. 주장은 근거가 필요합니다.', '근거': '주장의 근거 (주장일 때 필수)',
-    '파일명': '사진 폴더 안의 PNG/JPEG 파일 이름', '역할': '대표 / 특징 / 해결 / 기타 (첫 사진은 대표 권장)',
-    '배경 제거 여부': '예 / 아니오 (기본 아니오)', '후기': '실제 고객 후기 원문. AI는 후기를 만들지 않습니다.',
-    '별점': '1~5 정수', '출처': '후기를 받은 곳', '허가 확인': '예 = 사용 허가를 확인함 (필수)',
+    'product_id': '��ǰ�� �����ϴ� �̸�. ���������ڡ�-��_ 1~40��. ���� �̸��� ���Դϴ�.',
+    '��ǰ��': '��ǰ �̸� (�ʼ�)', 'ī�װ���': '�з� (�ʼ�)', '����': '�Ǹ� ���� ���� (�ʼ�). AI�� ������ ������ �ʽ��ϴ�.',
+    '�귣�� ��': '#RRGGBB ���� (��: #305b46)', '�׸�': 'classic(�⺻) / minimal / bold', '������': '�������� ������: generic(�⺻) / smartstore / coupang / ����� ������ �̸�',
+    '���� ����': '���� ��Ʈ ���� �Ʒ��� ��ǰ�� ���� �̸�. ��Ʈ �� ��δ� �� �� �����ϴ�.', '�ȳ� ����': '���� �ȳ�(����)',
+    'fact_id': '��� id (��ǰ �ȿ��� �ߺ� �Ұ�). AI �亯�� �ٰŷ� ���Դϴ�.', '����': '�Ǹ��ڰ� Ȯ���� ��� ���� (�ִ� 500��)',
+    '����': '���� / Ư¡ / ���� / ���� / ��Ÿ. ������ �ٰŰ� �ʿ��մϴ�.', '�ٰ�': '������ �ٰ� (������ �� �ʼ�)',
+    '���ϸ�': '���� ���� ���� PNG/JPEG ���� �̸�', '����': '��ǥ / Ư¡ / �ذ� / ��Ÿ (ù ������ ��ǥ ����)',
+    '��� ���� ����': '�� / �ƴϿ� (�⺻ �ƴϿ�)', '�ı�': '���� ���� �ı� ����. AI�� �ı⸦ ������ �ʽ��ϴ�.',
+    '����': '1~5 ����', '��ó': '�ı⸦ ���� ��', '�㰡 Ȯ��': '�� = ��� �㰡�� Ȯ���� (�ʼ�)',
+    'reference_id': '���� �ڷ� id. ��ǰ ��� fact_id�� ��ĥ �� �����ϴ�.', '��': '�ڷḦ �˾ƺ� �̸� (��: ����� A ��������)',
+    '����': '���� ������ �ٿ����� ���� �ڷ� (�ִ� 5,000��)', '��ó �޸�': '��ó ���. URL�� ��� ���α׷��� �������� �ʽ��ϴ�.',
 }
-KINDS = {'스펙': 'spec', '특징': 'feature', '사용법': 'usage', '주장': 'claim', '기타': 'other'}
-ROLES = {'대표': 'hero', '특징': 'feature', '해결': 'solution', '기타': 'other'}
-YES = {'예', 'y', 'yes', 'true', '1', 'o'}
-NO = {'', '아니오', '아니요', 'n', 'no', 'false', '0', 'x'}
+KINDS = {'����': 'spec', 'Ư¡': 'feature', '����': 'usage', '����': 'claim', '��Ÿ': 'other'}
+ROLES = {'��ǥ': 'hero', 'Ư¡': 'feature', '�ذ�': 'solution', '��Ÿ': 'other'}
+REFERENCE_KINDS = {'�����': 'competitor', '���� ��Ҹ�': 'customer_voice', '��Ÿ': 'other'}
+YES = {'��', 'y', 'yes', 'true', '1', 'o'}
+NO = {'', '�ƴϿ�', '�ƴϿ�', 'n', 'no', 'false', '0', 'x'}
 PRODUCT_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$')
 MAX_PRODUCTS = 50
 MAX_BYTES = 5 * 1024 * 1024
@@ -51,12 +55,13 @@ MAX_XLSX_MEMBER_BYTES = 20 * 1024 * 1024
 MAX_XLSX_EXPANDED_BYTES = 50 * 1024 * 1024
 MAX_XLSX_COMPRESSION_RATIO = 200
 ANSWER_FILE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,39}\.txt$')
-STATUS_LABELS = {'input_error': '입력 오류', 'awaiting_answer': '프롬프트 대기', 'answer_error': '답변 오류',
-                 'needs_review': '검수 필요', 'approved': '승인됨'}
-PRODUCT_FIELDS = {'name': '상품명', 'category': '카테고리', 'price': '가격', 'brand_color': '브랜드 색'}
-FACT_FIELDS = {'id': 'fact_id', 'text': '문구', 'kind': '종류', 'evidence': '근거'}
-IMAGE_FIELDS = {'path': '파일명', 'role': '역할', 'processing': '배경 제거 여부', 'alt': '파일명'}
-REVIEW_FIELDS = {'text': '후기', 'rating': '별점', 'source': '출처', 'permission_confirmed': '허가 확인'}
+STATUS_LABELS = {'input_error': '�Է� ����', 'awaiting_answer': '������Ʈ ���', 'answer_error': '�亯 ����',
+                 'needs_review': '�˼� �ʿ�', 'approved': '���ε�'}
+PRODUCT_FIELDS = {'name': '��ǰ��', 'category': 'ī�װ���', 'price': '����', 'brand_color': '�귣�� ��'}
+FACT_FIELDS = {'id': 'fact_id', 'text': '����', 'kind': '����', 'evidence': '�ٰ�'}
+IMAGE_FIELDS = {'path': '���ϸ�', 'role': '����', 'processing': '��� ���� ����', 'alt': '���ϸ�'}
+REVIEW_FIELDS = {'text': '�ı�', 'rating': '����', 'source': '��ó', 'permission_confirmed': '�㰡 Ȯ��'}
+REFERENCE_FIELDS = {'id': 'reference_id', 'label': '��', 'kind': '����', 'text': '����', 'source_note': '��ó �޸�'}
 
 
 def now():
@@ -64,9 +69,9 @@ def now():
 
 
 # Common validation messages in the words a seller would use (the same wording as the single-product screen).
-REASONS = (('Field required', '필수 입력입니다'), ('String should have at least 1 character', '한 글자 이상 입력해 주세요'),
-           ('String should match pattern', '형식이 맞지 않습니다'), ('permission_confirmed must be true', '허가 확인이 "예"여야 합니다'),
-           ('claim requires evidence', '주장은 근거를 입력해야 합니다'), ('Input should be', '허용되지 않는 값입니다. 입력 가능:'))
+REASONS = (('Field required', '�ʼ� �Է��Դϴ�'), ('String should have at least 1 character', '�� ���� �̻� �Է��� �ּ���'),
+           ('String should match pattern', '������ ���� �ʽ��ϴ�'), ('permission_confirmed must be true', '�㰡 Ȯ���� "��"���� �մϴ�'),
+           ('claim requires evidence', '������ �ٰŸ� �Է��ؾ� �մϴ�'), ('Input should be', '������ �ʴ� ���Դϴ�. �Է� ����:'))
 
 
 def _reason(text: str) -> str:
@@ -86,7 +91,7 @@ def _cell(value) -> str:
     if value is None:
         return ''
     if isinstance(value, bool):
-        return '예' if value else '아니오'
+        return '��' if value else '�ƴϿ�'
     if isinstance(value, float) and value.is_integer():
         value = int(value)
     return str(value).strip()
@@ -96,7 +101,7 @@ def _rows(sheet: str, header: list, rows) -> list[tuple[int, dict]]:
     """``rows`` are raw value lists after the header; returns (Excel row number, {header: text})."""
     missing = [h for h in HEADERS[sheet] if h not in header]
     if missing:
-        raise ValueError(f'{sheet} 시트(파일)에 열이 없습니다: {", ".join(missing)} (첫 줄은 열 이름이어야 합니다)')
+        raise ValueError(f'{sheet} ��Ʈ(����)�� ���� �����ϴ�: {", ".join(missing)} (ù ���� �� �̸��̾�� �մϴ�)')
     index = {h: header.index(h) for h in HEADERS[sheet]}
     out = []
     for number, values in rows:
@@ -113,21 +118,21 @@ def _xlsx_metadata(path: Path) -> tuple[list[str], str]:
         with zipfile.ZipFile(path) as archive:
             infos = archive.infolist()
             if len(infos) > MAX_XLSX_ENTRIES:
-                raise ValueError(f'XLSX 압축 항목이 너무 많습니다 (최대 {MAX_XLSX_ENTRIES}개)')
+                raise ValueError(f'XLSX ���� �׸��� �ʹ� �����ϴ� (�ִ� {MAX_XLSX_ENTRIES}��)')
             expanded = sum(info.file_size for info in infos)
             if expanded > MAX_XLSX_EXPANDED_BYTES:
-                raise ValueError(f'XLSX 압축 해제 크기가 상한({MAX_XLSX_EXPANDED_BYTES:,}바이트)을 넘습니다')
+                raise ValueError(f'XLSX ���� ���� ũ�Ⱑ ����({MAX_XLSX_EXPANDED_BYTES:,}����Ʈ)�� �ѽ��ϴ�')
             for info in infos:
                 if info.file_size > MAX_XLSX_MEMBER_BYTES:
-                    raise ValueError(f'XLSX 압축 해제 항목이 너무 큽니다: {info.filename}')
+                    raise ValueError(f'XLSX ���� ���� �׸��� �ʹ� Ů�ϴ�: {info.filename}')
                 if (info.file_size >= 1024 * 1024 and info.compress_size > 0
                         and info.file_size / info.compress_size > MAX_XLSX_COMPRESSION_RATIO):
-                    raise ValueError(f'XLSX 압축률이 비정상적으로 높습니다: {info.filename}')
+                    raise ValueError(f'XLSX ������� ������������ �����ϴ�: {info.filename}')
             names = [info.filename for info in infos]
             types = archive.read('[Content_Types].xml').decode('utf-8', 'replace') if '[Content_Types].xml' in names else ''
             return names, types
     except zipfile.BadZipFile as exc:
-        raise ValueError(f'XLSX 파일을 열 수 없습니다: {path.name}') from exc
+        raise ValueError(f'XLSX ������ �� �� �����ϴ�: {path.name}') from exc
 
 
 def _is_macro(path: Path) -> bool:
@@ -142,41 +147,42 @@ def read_sheets(source: Path, max_bytes: int = MAX_BYTES) -> dict[str, list[tupl
         files = {sheet: source / f'{sheet}.csv' for sheet in HEADERS}
         missing = [f'{s}.csv' for s in REQUIRED_SHEETS if not files[s].is_file()]
         if missing:
-            raise ValueError(f'CSV 파일이 없습니다: {", ".join(missing)}')
+            raise ValueError(f'CSV ������ �����ϴ�: {", ".join(missing)}')
         present = {s: p for s, p in files.items() if p.is_file()}
         if sum(p.stat().st_size for p in present.values()) > max_bytes:
-            raise ValueError(f'파일 크기가 상한({max_bytes:,}바이트)을 넘습니다')
+            raise ValueError(f'���� ũ�Ⱑ ����({max_bytes:,}����Ʈ)�� �ѽ��ϴ�')
         sheets = {}
         for sheet, path in present.items():
             try:
                 text = path.read_bytes().decode('utf-8-sig')
             except UnicodeDecodeError as exc:
-                raise ValueError(f'{path.name}: UTF-8(BOM 허용) 인코딩만 지원합니다. 엑셀에서 "CSV UTF-8"로 다시 저장하세요.') from exc
+                raise ValueError(f'{path.name}: UTF-8(BOM ���) ���ڵ��� �����մϴ�. �������� "CSV UTF-8"�� �ٽ� �����ϼ���.') from exc
             table = list(csv.reader(io.StringIO(text)))
             if not table:
-                raise ValueError(f'{path.name}: 열 이름 줄이 없습니다')
+                raise ValueError(f'{path.name}: �� �̸� ���� �����ϴ�')
             sheets[sheet] = _rows(sheet, [h.strip() for h in table[0]], enumerate(table[1:], 2))
         sheets.setdefault('reviews', [])
+        sheets.setdefault('references', [])
         return sheets
     if not source.is_file():
-        raise ValueError(f'입력 파일이 없습니다: {source}')
+        raise ValueError(f'�Է� ������ �����ϴ�: {source}')
     if source.suffix.lower() in ('.xlsm', '.xltm', '.xlam'):
-        raise ValueError('매크로가 포함된 통합 문서(.xlsm 등)는 열지 않습니다. 매크로 없는 .xlsx로 저장하세요.')
+        raise ValueError('��ũ�ΰ� ���Ե� ���� ����(.xlsm ��)�� ���� �ʽ��ϴ�. ��ũ�� ���� .xlsx�� �����ϼ���.')
     if source.suffix.lower() != '.xlsx':
-        raise ValueError('XLSX 파일 또는 CSV 파일이 든 폴더만 지원합니다')
+        raise ValueError('XLSX ���� �Ǵ� CSV ������ �� ������ �����մϴ�')
     if source.stat().st_size > max_bytes:
-        raise ValueError(f'파일 크기가 상한({max_bytes:,}바이트)을 넘습니다')
+        raise ValueError(f'���� ũ�Ⱑ ����({max_bytes:,}����Ʈ)�� �ѽ��ϴ�')
     if _is_macro(source):
-        raise ValueError('매크로가 포함된 통합 문서(.xlsm 등)는 열지 않습니다. 매크로 없는 .xlsx로 저장하세요.')
+        raise ValueError('��ũ�ΰ� ���Ե� ���� ����(.xlsm ��)�� ���� �ʽ��ϴ�. ��ũ�� ���� .xlsx�� �����ϼ���.')
     from openpyxl import load_workbook
     try:
         book = load_workbook(source, read_only=True, data_only=True)  # stored values; formulas are not evaluated
     except Exception as exc:  # openpyxl raises several types for corrupt files
-        raise ValueError(f'XLSX 파일을 읽을 수 없습니다: {exc}') from exc
+        raise ValueError(f'XLSX ������ ���� �� �����ϴ�: {exc}') from exc
     try:
         missing = [s for s in REQUIRED_SHEETS if s not in book.sheetnames]
         if missing:
-            raise ValueError(f'시트가 없습니다: {", ".join(missing)}')
+            raise ValueError(f'��Ʈ�� �����ϴ�: {", ".join(missing)}')
         sheets = {}
         for sheet in HEADERS:
             if sheet not in book.sheetnames:
@@ -209,12 +215,13 @@ def _bool(value: str):
 
 
 def _locate(loc, rows) -> tuple[str, int, str]:
-    """Map a pydantic error location in ProductFacts to sheet·row·column."""
+    """Map a pydantic error location in ProductFacts to sheet��row��column."""
     head = loc[0] if loc else None
     if head == 'product' or head == 'notice' or head is None:
-        column = PRODUCT_FIELDS.get(loc[1], '') if head == 'product' and len(loc) > 1 else ('안내 문구' if head == 'notice' else '')
+        column = PRODUCT_FIELDS.get(loc[1], '') if head == 'product' and len(loc) > 1 else ('�ȳ� ����' if head == 'notice' else '')
         return 'products', rows['product'], column
-    sheet, fields = {'facts': ('facts', FACT_FIELDS), 'images': ('images', IMAGE_FIELDS), 'reviews': ('reviews', REVIEW_FIELDS)}[head]
+    sheet, fields = {'facts': ('facts', FACT_FIELDS), 'images': ('images', IMAGE_FIELDS),
+                     'reviews': ('reviews', REVIEW_FIELDS), 'references': ('references', REFERENCE_FIELDS)}[head]
     index = loc[1] if len(loc) > 1 and isinstance(loc[1], int) else 0
     row = rows[sheet][index] if rows[sheet] else rows['product']
     column = fields.get(loc[2], '') if len(loc) > 2 else ''
@@ -226,77 +233,82 @@ def _validate_product(number, record, children, photo_root: Path):
     from .themes import load_theme
     from .export import load_profile
     errors = []
-    theme = record['테마'] or 'classic'
-    profile = record['프로필'] or 'generic'
+    theme = record['�׸�'] or 'classic'
+    profile = record['������'] or 'generic'
     try:
         load_theme(theme)
     except ValueError:
-        errors.append(_error('products', number, '테마', f'알 수 없는 테마: {theme} (classic, minimal, bold)'))
+        errors.append(_error('products', number, '�׸�', f'�� �� ���� �׸�: {theme} (classic, minimal, bold)'))
     try:
         load_profile(profile)
     except ValueError as exc:
-        errors.append(_error('products', number, '프로필', str(exc)))
+        errors.append(_error('products', number, '������', str(exc)))
     folder = None
-    if not _safe_relative(record['사진 폴더']):
-        errors.append(_error('products', number, '사진 폴더', '사진 루트 아래의 상대 폴더 이름이어야 합니다 (절대 경로·..·역슬래시 불가)'))
+    if not _safe_relative(record['���� ����']):
+        errors.append(_error('products', number, '���� ����', '���� ��Ʈ �Ʒ��� ��� ���� �̸��̾�� �մϴ� (���� ��Ρ�..���������� �Ұ�)'))
     else:
-        folder = (photo_root / record['사진 폴더']).resolve()
+        folder = (photo_root / record['���� ����']).resolve()
         if not folder.is_relative_to(photo_root) or not folder.is_dir():
-            errors.append(_error('products', number, '사진 폴더', '사진 루트 아래에 이 폴더가 없습니다'))
+            errors.append(_error('products', number, '���� ����', '���� ��Ʈ �Ʒ��� �� ������ �����ϴ�'))
             folder = None
 
-    rows = {'product': number, 'facts': [], 'images': [], 'reviews': []}
-    facts, images, reviews = [], [], []
+    rows = {'product': number, 'facts': [], 'images': [], 'reviews': [], 'references': []}
+    facts, images, reviews, references = [], [], [], []
     seen = set()
     for row, item in children['facts']:
         if item['fact_id'] in seen:
-            errors.append(_error('facts', row, 'fact_id', f'같은 상품 안에서 fact_id가 중복됩니다: {item["fact_id"]}'))
+            errors.append(_error('facts', row, 'fact_id', f'���� ��ǰ �ȿ��� fact_id�� �ߺ��˴ϴ�: {item["fact_id"]}'))
             continue
         seen.add(item['fact_id'])
-        fact = {'id': item['fact_id'], 'text': item['문구'], 'kind': KINDS.get(item['종류'], item['종류'])}
-        if item['근거']:
-            fact['evidence'] = item['근거']
+        fact = {'id': item['fact_id'], 'text': item['����'], 'kind': KINDS.get(item['����'], item['����'])}
+        if item['�ٰ�']:
+            fact['evidence'] = item['�ٰ�']
         facts.append(fact); rows['facts'].append(row)
     for row, item in children['images']:
-        if not _safe_relative(item['파일명']) or '/' in item['파일명']:
-            errors.append(_error('images', row, '파일명', '사진 폴더 안의 파일 이름만 쓸 수 있습니다 (경로·..·역슬래시·제어 문자 불가)'))
+        if not _safe_relative(item['���ϸ�']) or '/' in item['���ϸ�']:
+            errors.append(_error('images', row, '���ϸ�', '���� ���� ���� ���� �̸��� �� �� �ֽ��ϴ� (��Ρ�..���������á����� ���� �Ұ�)'))
             continue
-        remove = _bool(item['배경 제거 여부'])
-        images.append({'path': item['파일명'], 'role': ROLES.get(item['역할'], item['역할'] or 'other'),
+        remove = _bool(item['��� ���� ����'])
+        images.append({'path': item['���ϸ�'], 'role': ROLES.get(item['����'], item['����'] or 'other'),
                        'processing': {'remove_background': remove}})
         rows['images'].append(row)
     for row, item in children['reviews']:
-        rating = item['별점']
-        reviews.append({'text': item['후기'], 'rating': int(rating) if rating.isdigit() else rating,
-                        'source': item['출처'], 'permission_confirmed': _bool(item['허가 확인'])})
+        rating = item['����']
+        reviews.append({'text': item['�ı�'], 'rating': int(rating) if rating.isdigit() else rating,
+                        'source': item['��ó'], 'permission_confirmed': _bool(item['�㰡 Ȯ��'])})
         rows['reviews'].append(row)
+    for row, item in children['references']:
+        references.append({'id': item['reference_id'], 'label': item['��'],
+                           'kind': REFERENCE_KINDS.get(item['����'], item['����']),
+                           'text': item['����'], 'source_note': item['��ó �޸�']})
+        rows['references'].append(row)
     if not children['images']:
-        errors.append(_error('products', number, '사진 폴더', 'images 시트에 이 상품의 사진이 없습니다'))
+        errors.append(_error('products', number, '���� ����', 'images ��Ʈ�� �� ��ǰ�� ������ �����ϴ�'))
     if len(reviews) > 10:
-        errors.append(_error('reviews', rows['reviews'][10], '후기', '후기는 상품마다 최대 10개까지 입력할 수 있습니다'))
+        errors.append(_error('reviews', rows['reviews'][10], '�ı�', '�ı�� ��ǰ���� �ִ� 10������ �Է��� �� �ֽ��ϴ�'))
     distinct_images = set()
     for index, image in enumerate(images):
         distinct_images.add(image['path'])
         if len(distinct_images) > 5:
-            errors.append(_error('images', rows['images'][index], '파일명', '사진은 상품마다 서로 다른 파일 최대 5개까지 입력할 수 있습니다'))
+            errors.append(_error('images', rows['images'][index], '���ϸ�', '������ ��ǰ���� ���� �ٸ� ���� �ִ� 5������ �Է��� �� �ֽ��ϴ�'))
             break
     if errors:
         return None, folder, theme, profile, errors
 
     data = {'schema_version': '1.0',
-            'product': {'name': record['상품명'], 'category': record['카테고리'], 'price': record['가격'], 'brand_color': record['브랜드 색']},
-            'facts': facts, 'images': images, 'reviews': reviews}
-    if record['안내 문구']:
-        data['notice'] = record['안내 문구']
+            'product': {'name': record['��ǰ��'], 'category': record['ī�װ���'], 'price': record['����'], 'brand_color': record['�귣�� ��']},
+            'facts': facts, 'images': images, 'reviews': reviews, 'references': references}
+    if record['�ȳ� ����']:
+        data['notice'] = record['�ȳ� ����']
     try:
         product = ProductFacts.model_validate(data)
     except ValidationError as exc:
         for item in exc.errors(include_url=False):
             sheet, row, column = _locate(item['loc'], rows)
             if not column and sheet == 'facts' and 'evidence' in item['msg']:
-                column = '근거'
+                column = '�ٰ�'
             if not column and sheet == 'reviews' and 'permission' in item['msg']:
-                column = '허가 확인'
+                column = '�㰡 Ȯ��'
             errors.append(_error(sheet, row, column, item['msg'].removeprefix('Value error, ')))
         return None, folder, theme, profile, errors
     try:
@@ -304,8 +316,8 @@ def _validate_product(number, record, children, photo_root: Path):
     except ValueError as exc:
         match = re.match(r'images\.(.+?): (.*)', str(exc))
         name = match.group(1) if match else ''
-        row = next((r for r, (_, i) in zip(rows['images'], children['images']) if i['파일명'] == name), number)
-        errors.append(_error('images' if match else 'products', row, '파일명' if match else '사진 폴더',
+        row = next((r for r, (_, i) in zip(rows['images'], children['images']) if i['���ϸ�'] == name), number)
+        errors.append(_error('images' if match else 'products', row, '���ϸ�' if match else '���� ����',
                              match.group(2) if match else str(exc)))
         return None, folder, theme, profile, errors
     return product, folder, theme, profile, []
@@ -316,21 +328,21 @@ def import_batch(source: Path, photo_root: Path, output: Path, *, max_products: 
     photo_root = Path(photo_root).resolve(strict=True)
     sheets = read_sheets(source, max_bytes)
     if len(sheets['products']) > max_products:
-        raise ValueError(f'상품은 한 번에 최대 {max_products}개까지 가져올 수 있습니다 (현재 {len(sheets["products"])}개)')
+        raise ValueError(f'��ǰ�� �� ���� �ִ� {max_products}������ ������ �� �ֽ��ϴ� (���� {len(sheets["products"])}��)')
     errors, products, order = [], {}, []
     for number, record in sheets['products']:
         pid = record['product_id']
         if not PRODUCT_ID.fullmatch(pid):
-            errors.append(_error('products', number, 'product_id', 'product_id는 영문·숫자·-·_ 1~40자여야 합니다'))
+            errors.append(_error('products', number, 'product_id', 'product_id�� ���������ڡ�-��_ 1~40�ڿ��� �մϴ�'))
         elif pid in products:
-            errors.append(_error('products', number, 'product_id', f'product_id가 중복됩니다: {pid} (먼저 나온 행만 사용)'))
+            errors.append(_error('products', number, 'product_id', f'product_id�� �ߺ��˴ϴ�: {pid} (���� ���� �ุ ���)'))
         else:
-            products[pid] = (number, record, {'facts': [], 'images': [], 'reviews': []})
+            products[pid] = (number, record, {'facts': [], 'images': [], 'reviews': [], 'references': []})
             order.append(pid)
-    for sheet in ('facts', 'images', 'reviews'):
+    for sheet in ('facts', 'images', 'reviews', 'references'):
         for number, record in sheets[sheet]:
             if record['product_id'] not in products:
-                errors.append(_error(sheet, number, 'product_id', f'products 시트에 없는 product_id: {record["product_id"]}'))
+                errors.append(_error(sheet, number, 'product_id', f'products ��Ʈ�� ���� product_id: {record["product_id"]}'))
             else:
                 products[record['product_id']][2][sheet].append((number, record))
 
@@ -341,15 +353,15 @@ def import_batch(source: Path, photo_root: Path, output: Path, *, max_products: 
     for pid in order:
         number, record, children = products[pid]
         product, folder, theme, profile, problems = _validate_product(number, record, children, photo_root)
-        entry = {'product_id': pid, 'name': record['상품명'], 'row': number, 'theme': theme, 'profile': profile,
-                 'photo_folder': record['사진 폴더'], 'job': None, 'accepted_job': None, 'errors': problems,
+        entry = {'product_id': pid, 'name': record['��ǰ��'], 'row': number, 'theme': theme, 'profile': profile,
+                 'photo_folder': record['���� ����'], 'job': None, 'accepted_job': None, 'errors': problems,
                  'status': 'input_error', 'message': ''}
         if product is not None:
             try:
                 job = create_job(product, folder, batch / 'products' / pid, theme=theme)
                 entry.update(job=str(job.relative_to(batch)), status='awaiting_answer')
             except ValueError as exc:
-                entry['errors'] = [_error('products', number, '사진 폴더', f'작업을 만들 수 없습니다: {exc}')]
+                entry['errors'] = [_error('products', number, '���� ����', f'�۾��� ���� �� �����ϴ�: {exc}')]
         entries.append(entry)
     write_json(batch / 'batch.json', {'version': 1, 'id': batch.name, 'created_at': now(), 'source': Path(source).name,
                                       'photo_root': str(photo_root), 'products': entries, 'errors': errors})
@@ -412,7 +424,7 @@ def load_batch(batch: Path) -> dict:
     batch = Path(batch)
     data = read_json(batch / 'batch.json')
     if not isinstance(data, dict) or data.get('version') != 1:
-        raise ValueError('batch.json 형식이 올바르지 않습니다')
+        raise ValueError('batch.json ������ �ùٸ��� �ʽ��ϴ�')
     return data
 
 
@@ -440,13 +452,14 @@ def list_batches(output: Path) -> list[dict]:
 # --- template --------------------------------------------------------------------------------------
 
 EXAMPLE = {
-    'products': [{'product_id': 'example-1', '상품명': '예시 보틀', '카테고리': '생활용품', '가격': '12,000원', '브랜드 색': '#305b46',
-                  '테마': 'classic', '프로필': 'generic', '사진 폴더': 'example-1', '안내 문구': '예시 상품입니다. 실제 상품 정보로 바꾸세요.'}],
-    'facts': [{'product_id': 'example-1', 'fact_id': 'design', '문구': '간결한 형태의 보틀', '종류': '특징', '근거': ''},
-              {'product_id': 'example-1', 'fact_id': 'spec-demo', '문구': '용량 500ml', '종류': '스펙', '근거': ''},
-              {'product_id': 'example-1', 'fact_id': 'usage', '문구': '사용 전 설명서를 확인한다', '종류': '사용법', '근거': ''}],
-    'images': [{'product_id': 'example-1', '파일명': 'main.png', '역할': '대표', '배경 제거 여부': '아니오'}],
+    'products': [{'product_id': 'example-1', '��ǰ��': '���� ��Ʋ', 'ī�װ���': '��Ȱ��ǰ', '����': '12,000��', '�귣�� ��': '#305b46',
+                  '�׸�': 'classic', '������': 'generic', '���� ����': 'example-1', '�ȳ� ����': '���� ��ǰ�Դϴ�. ���� ��ǰ ������ �ٲټ���.'}],
+    'facts': [{'product_id': 'example-1', 'fact_id': 'design', '����': '������ ������ ��Ʋ', '����': 'Ư¡', '�ٰ�': ''},
+              {'product_id': 'example-1', 'fact_id': 'spec-demo', '����': '�뷮 500ml', '����': '����', '�ٰ�': ''},
+              {'product_id': 'example-1', 'fact_id': 'usage', '����': '��� �� �������� Ȯ���Ѵ�', '����': '����', '�ٰ�': ''}],
+    'images': [{'product_id': 'example-1', '���ϸ�': 'main.png', '����': '��ǥ', '��� ���� ����': '�ƴϿ�'}],
     'reviews': [],
+    'references': [],
 }
 
 
@@ -459,36 +472,43 @@ def write_template(path: Path, rows: int = MAX_PRODUCTS * 20) -> Path:
     from openpyxl.worksheet.datavalidation import DataValidation
     book = Workbook()
     book.remove(book.active)
-    lists = {'테마': ('classic,minimal,bold', True), '프로필': ('generic,smartstore,coupang', False),
-             '종류': (','.join(KINDS), True), '역할': (','.join(ROLES), True),
-             '배경 제거 여부': ('예,아니오', True), '허가 확인': ('예,아니오', True)}
+    lists = {('products','�׸�'): ('classic,minimal,bold', True),
+             ('products','������'): ('generic,smartstore,coupang', False),
+             ('facts','����'): (','.join(KINDS), True),
+             ('references','����'): (','.join(REFERENCE_KINDS), True),
+             ('images','����'): (','.join(ROLES), True),
+             ('images','��� ���� ����'): ('��,�ƴϿ�', True),
+             ('reviews','�㰡 Ȯ��'): ('��,�ƴϿ�', True)}
     for sheet, headers in HEADERS.items():
         ws = book.create_sheet(sheet)
         ws.append(headers)
         for column, header in enumerate(headers, 1):
             cell = ws.cell(1, column)
-            cell.comment = Comment(DESCRIPTIONS[header], 'detail-page-auto')
+            description = ('����� / ���� ��Ҹ� / ��Ÿ' if sheet == 'references' and header == '����'
+                           else DESCRIPTIONS[header])
+            cell.comment = Comment(description, 'detail-page-auto')
             cell.font = Font(bold=True)
             cell.fill = PatternFill('solid', fgColor='E5EEE7')
             ws.column_dimensions[get_column_letter(column)].width = max(14, len(header) * 3)
-            if header in lists:
-                options, strict = lists[header]
+            if (sheet,header) in lists:
+                options, strict = lists[(sheet,header)]
                 rule = DataValidation(type='list', formula1=f'"{options}"', allow_blank=True, showErrorMessage=strict)
                 rule.add(f'{get_column_letter(column)}2:{get_column_letter(column)}{rows}')
                 ws.add_data_validation(rule)
         for record in EXAMPLE[sheet]:
             ws.append([record.get(h, '') for h in headers])
         ws.freeze_panes = 'A2'
-    guide = book.create_sheet('안내', 0)
-    lines = ['상품 목록 템플릿 사용법',
-             '1. products 시트: 상품 1개 = 1행. product_id로 다른 시트와 연결합니다.',
-             '2. facts 시트: 판매자가 확인한 사실. 주장은 근거가 필요합니다.',
-             '3. images 시트: 사진 폴더 안의 파일 이름. 사진 폴더는 가져올 때 지정한 사진 루트 폴더 아래에 있어야 합니다.',
-             '4. reviews 시트(선택): 실제 고객 후기만, 허가 확인 열에 "예". AI는 후기·별점·가격을 만들지 않습니다.',
-             '   예: product_id=example-1, 후기=실제 받은 후기 원문, 별점=5, 출처=스토어 리뷰, 허가 확인=예',
-             '5. 각 열 이름에 마우스를 올리면 설명이 보입니다. example-1 예시 행은 지우거나 실제 상품으로 바꾸세요.',
-             '6. 수식은 계산하지 않고 저장된 값만 읽습니다. 매크로 파일(.xlsm)은 열지 않습니다.',
-             f'7. 한 번에 최대 {MAX_PRODUCTS}개 상품, 파일 크기 {MAX_BYTES // (1024 * 1024)}MB까지 가져옵니다.']
+    guide = book.create_sheet('�ȳ�', 0)
+    lines = ['��ǰ ��� ���ø� ����',
+             '1. products ��Ʈ: ��ǰ 1�� = 1��. product_id�� �ٸ� ��Ʈ�� �����մϴ�.',
+             '2. facts ��Ʈ: �Ǹ��ڰ� Ȯ���� ���. ������ �ٰŰ� �ʿ��մϴ�.',
+             '3. images ��Ʈ: ���� ���� ���� ���� �̸�. ���� ������ ������ �� ������ ���� ��Ʈ ���� �Ʒ��� �־�� �մϴ�.',
+             '4. reviews ��Ʈ(����): ���� ���� �ı⸸, �㰡 Ȯ�� ���� "��". AI�� �ı⡤������������ ������ �ʽ��ϴ�.',
+             '   ��: product_id=example-1, �ı�=���� ���� �ı� ����, ����=5, ��ó=����� ����, �㰡 Ȯ��=��',
+             '5. references ��Ʈ(����): ���� �ٿ����� ���� �ڷ��̸� URL�� ��ϸ� �ϰ� �������� �ʽ��ϴ�.',
+             '6. �� �� �̸��� ���콺�� �ø��� ������ ���Դϴ�. example-1 ���� ���� ����ų� ���� ��ǰ���� �ٲټ���.',
+             '7. ������ ������� �ʰ� ����� ���� �н��ϴ�. ��ũ�� ����(.xlsm)�� ���� �ʽ��ϴ�.',
+             f'8. �� ���� �ִ� {MAX_PRODUCTS}�� ��ǰ, ���� ũ�� {MAX_BYTES // (1024 * 1024)}MB���� �����ɴϴ�.']
     for line in lines:
         guide.append([line])
     guide.column_dimensions['A'].width = 110
@@ -505,7 +525,7 @@ PENDING = ('awaiting_answer', 'answer_error')
 def _job(batch: Path, entry: dict) -> Path:
     job = (batch / entry['job']).resolve()
     if not job.is_relative_to(batch.resolve()):
-        raise ValueError('batch.json의 작업 경로가 일괄 작업 폴더 밖을 가리킵니다')
+        raise ValueError('batch.json�� �۾� ��ΰ� �ϰ� �۾� ���� ���� ����ŵ�ϴ�')
     return job
 
 
@@ -540,7 +560,7 @@ def ingest_answers(batch: Path, answers: Path) -> dict:
     from .workflow import ingest_job
     batch, answers = Path(batch), Path(answers)
     if not answers.is_dir():
-        raise ValueError(f'답변 폴더가 없습니다: {answers}')
+        raise ValueError(f'�亯 ������ �����ϴ�: {answers}')
     entries = batch_status(batch)
     ids = {e['product_id'] for e in entries}
     report = {'unknown_files': sorted(p.name for p in answers.glob('*.txt') if p.stem not in ids)}
@@ -551,14 +571,14 @@ def ingest_answers(batch: Path, answers: Path) -> dict:
             continue
         path = answers / f'{pid}.txt'
         if path.is_symlink() or not path.is_file():
-            report[pid] = {'result': 'missing', 'message': f'{pid}.txt 답변 파일이 없습니다'}
+            report[pid] = {'result': 'missing', 'message': f'{pid}.txt �亯 ������ �����ϴ�'}
             continue
         try:
             text = path.read_bytes().decode('utf-8-sig')
             ingest_job(_job(batch, entry), text, source_label='batch:' + path.name)
             report[pid] = {'result': 'ok', 'message': ''}
         except UnicodeDecodeError:
-            report[pid] = {'result': 'error', 'message': f'{pid}.txt: UTF-8 텍스트가 아닙니다'}
+            report[pid] = {'result': 'error', 'message': f'{pid}.txt: UTF-8 �ؽ�Ʈ�� �ƴմϴ�'}
         except ValueError as exc:
             report[pid] = {'result': 'error', 'message': str(exc)}
     _remember(batch, report)
@@ -573,12 +593,12 @@ def ingest_uploaded_answers(batch: Path, uploads) -> dict:
         seen = set()
         for name, payload in uploads:
             if not isinstance(name, str) or '\\' in name or '/' in name or not ANSWER_FILE.fullmatch(name):
-                raise ValueError(f'답변 파일 이름은 <product_id>.txt여야 합니다: {name}')
+                raise ValueError(f'�亯 ���� �̸��� <product_id>.txt���� �մϴ�: {name}')
             if name in seen:
-                raise ValueError(f'답변 파일 이름이 중복됩니다: {name}')
+                raise ValueError(f'�亯 ���� �̸��� �ߺ��˴ϴ�: {name}')
             seen.add(name)
             if not isinstance(payload, bytes):
-                raise ValueError(f'답변 파일을 읽을 수 없습니다: {name}')
+                raise ValueError(f'�亯 ������ ���� �� �����ϴ�: {name}')
             (staging / name).write_bytes(payload)
         return ingest_answers(batch, staging)
     finally:
@@ -589,7 +609,7 @@ def generate_batch(batch: Path, provider, max_attempts: int = 3) -> dict:
     """Run a subscription CLI for each waiting product, one after another.
 
     A provider error (usage limit, login, timeout) stops the run at once without retrying, so no further
-    quota is spent; remaining products stay "프롬프트 대기".
+    quota is spent; remaining products stay "������Ʈ ���".
     """
     from .providers import ProviderError
     from .workflow import generate_job
@@ -625,7 +645,7 @@ def export_batch(batch: Path):
         for entry in entries:
             pid = entry['product_id']
             if entry['status'] != 'approved':
-                report[pid] = {'result': 'skipped', 'message': f"승인되지 않음 ({STATUS_LABELS[entry['status']]}) — ⑥에서 상품별로 승인하세요"}
+                report[pid] = {'result': 'skipped', 'message': f"���ε��� ���� ({STATUS_LABELS[entry['status']]}) ? �쿡�� ��ǰ���� �����ϼ���"}
                 continue
             try:
                 accepted = (batch / entry['accepted_job']).resolve()
@@ -644,7 +664,7 @@ def export_batch(batch: Path):
                            'warnings': [c['message'] for c in outcome['checks'] if c['level'] == 'warning']}
             exported += 1
         if not exported:
-            raise ValueError('승인된 상품이 없어 내보낼 것이 없습니다. 상품마다 ⑥에서 승인하세요.')
+            raise ValueError('���ε� ��ǰ�� ���� ������ ���� �����ϴ�. ��ǰ���� �쿡�� �����ϼ���.')
         archive.writestr('batch-export.json', json.dumps({'batch': batch.name, 'created_at': now(), 'products': report},
                                                          ensure_ascii=False, indent=2) + '\n')
     return f'{batch.name}-approved.zip', output.getvalue(), report
@@ -659,3 +679,5 @@ def _remember(batch: Path, results: dict) -> None:
             entry['message'] = outcome.get('message', '')
         entry['status'] = _status(batch, entry)
     write_json(batch / 'batch.json', data)
+
+

@@ -107,7 +107,7 @@ def change_copy_items(data: dict, section_id: str, action: str, index=None, evid
     old_indices=list(range(len(items)))
     if action=='add':
         if index is not None: raise ValueError('add appends an item; index must be omitted')
-        new='새 문구' if kind=='pain' else ({'q':'새 질문','a':'새 답변'} if kind=='faq' else {'title':'새 제목','desc':'새 설명'})
+        new='�� ����' if kind=='pain' else ({'q':'�� ����','a':'�� �亯'} if kind=='faq' else {'title':'�� ����','desc':'�� ����'})
         items.append(new); old_indices.append(None)
     elif action=='remove':
         if type(index) is not int or index<0 or index>=len(items): raise ValueError('invalid item index')
@@ -146,10 +146,12 @@ def reassess_draft(job: Path, document: Document | None = None, evidence=None) -
         def flag(reason):
             review.append({'section_id':section.id,'field_path':path,'reason':reason,'fact_ids':list(ids)})
         missing=[i for i in ids if i not in fact_map]
-        if missing: flag('존재하지 않는 fact_ids: '+', '.join(missing))
-        if not ids: flag('근거 fact_ids가 비어 있음')
-        if (re.search(r'\d|[%％]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
-            flag('수치·인증·효능 표현에 claim/spec 근거 확인 필요')
+        if missing: flag('�������� �ʴ� fact_ids: '+', '.join(missing))
+        if not ids: flag('�ٰ� fact_ids�� ��� ����')
+        if (re.search(r'\d|[%��]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
+            flag('��ġ��������ȿ�� ǥ���� claim/spec �ٰ� Ȯ�� �ʿ�')
+    from .similarity import reference_reviews
+    review+=reference_reviews(facts,document)
     manifest=read_json(job/'manifest.json')
     styles=theme_styles(manifest.get('theme','classic'),document.product.brand_color)
     return review+manifest.get('image_reviews',[])+styles['contrast_reviews']
@@ -290,3 +292,5 @@ def job_listing(output: Path) -> list[dict]:
         except (OSError,ValueError,KeyError,TypeError):
             continue
     return sorted(rows,key=lambda row:row['created_at'],reverse=True)
+
+

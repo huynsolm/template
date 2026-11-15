@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from .facts import ProductFacts
 from .copy_schema import CopyDraft
 from .schema import Document, Model, Text
-from .prompting import make_prompt, make_fix_prompt, VERSION
+from .prompting import make_prompt, make_fix_prompt, prompt_version
 from .ingest import extract_json
 from .assemble import assemble, DEFAULT_TERMS
 from .render import render
@@ -37,9 +37,9 @@ def prepare_images(facts: ProductFacts, job: Path, cache_dir: Path | None = None
     stored=facts.model_copy(deep=True)
     metadata=[]; reviews=[]
     reasons={
-        'image_low_resolution':'사진 해상도 부족: 너비 860px 미만입니다. 확대하지 않았으므로 선명도를 확인하세요.',
-        'background_suspect':'배경 제거 실패 의심: 전경 면적이 너무 작거나 큽니다. 상품 형태를 확인하세요.',
-        'background_failed':'배경 제거에 실패했습니다. 기본 처리본을 유지했습니다. 설치·모델·네트워크 상태를 확인하세요.',
+        'image_low_resolution':'���� �ػ� ����: �ʺ� 860px �̸��Դϴ�. Ȯ������ �ʾ����Ƿ� �������� Ȯ���ϼ���.',
+        'background_suspect':'��� ���� ���� �ǽ�: ���� ������ �ʹ� �۰ų� Ů�ϴ�. ��ǰ ���¸� Ȯ���ϼ���.',
+        'background_failed':'��� ���ſ� �����߽��ϴ�. �⺻ ó������ �����߽��ϴ�. ��ġ���𵨡���Ʈ��ũ ���¸� Ȯ���ϼ���.',
     }
     for index,image in enumerate(stored.images):
         result=process_image(Path(job)/image.path,job,image.processing,stored.product.brand_color,cache_dir=cache_dir)
@@ -82,7 +82,7 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
         write_json(job/'edits.json',{'locked_sections':list(locked or {})})
         write_json(job/'locked-review.json',locked_review or [])
         (job/'prompt.md').write_text(make_prompt(stored,locked),encoding='utf-8')
-        write_json(job/'manifest.json',{'theme':theme,**contrast_metadata(styles),'prompt_version':VERSION,'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews})
+        write_json(job/'manifest.json',{'theme':theme,**contrast_metadata(styles),'prompt_version':prompt_version(stored),'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews})
         return job
     except BaseException:
         shutil.rmtree(job)
@@ -133,7 +133,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         needs_review=bool(review)
         if render_output:
             if needs_review:
-                print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 cli.py accept --job '+str(job)+' 로 승인하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
+                print('\n'+'!'*72+'\nWARNING: �˼� �ʿ� ? '+str(len(review))+'�� �׸�. '+str(job/'review.json')+' Ȯ�� �ʼ�.\n'+('������ --accept-review �������� �Ϲ� ���ϸ��� ����մϴ�.' if accept_review else '�̽��� �ʾ�: .DRAFT ���ϸ����� �����մϴ�. �˼� �� cli.py accept --job '+str(job)+' �� �����ϼ���.')+'\n'+'!'*72+'\n',file=sys.stderr)
             render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme)
         for path in stage.iterdir(): path.replace(job/path.name)
         stage.rmdir()
@@ -292,3 +292,5 @@ def generate_job(facts, images, output, provider, max_attempts=3, source_label='
         except ValueError:
             if attempt+1==manifest['max_attempts']: raise
     return job
+
+

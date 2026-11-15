@@ -2,7 +2,7 @@
 import re
 from .schema import Document
 
-DEFAULT_TERMS=('인증','효능','효과','치료','예방','완치','개선','최고','최상','유일','우수')
+DEFAULT_TERMS=('����','ȿ��','ȿ��','ġ��','����','��ġ','����','�ְ�','�ֻ�','����','���')
 
 
 def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
@@ -12,11 +12,11 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
         ids=unit.fact_ids
         missing=[i for i in ids if i not in fact_map]
         def flag(reason): review.append({'section_id':section_id,'field_path':path,'reason':reason,'fact_ids':ids})
-        if missing: flag('존재하지 않는 fact_ids: '+', '.join(missing))
-        if not ids: flag('근거 fact_ids가 비어 있음')
+        if missing: flag('�������� �ʴ� fact_ids: '+', '.join(missing))
+        if not ids: flag('�ٰ� fact_ids�� ��� ����')
         text=' '.join(v for k,v in unit.model_dump().items() if isinstance(v,str))
-        if (re.search(r'\d|[%％]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
-            flag('수치·인증·효능 표현에 claim/spec 근거 확인 필요')
+        if (re.search(r'\d|[%��]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
+            flag('��ġ��������ȿ�� ǥ���� claim/spec �ٰ� Ȯ�� �ʿ�')
     sections=[]
     def add(kind, **values):
         sid=f'{kind}-1'
@@ -54,4 +54,9 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
         current={s['id'] for s in sections}
         sections.extend(section for sid,section in locked.items() if sid not in current)
         review=[item for item in review if item['section_id'] not in locked]
-    return Document.model_validate({'schema_version':'1.0','product':facts.product.model_dump(),'sections':sections}),review
+    document=Document.model_validate({'schema_version':'1.0','product':facts.product.model_dump(),'sections':sections})
+    from .similarity import reference_reviews
+    review+=reference_reviews(facts,document)
+    return document,review
+
+
