@@ -22,5 +22,14 @@ jobs:
           cache-dependency-path: detail-page-auto/requirements.lock
       - run: python -m pip install --require-hashes -r requirements.lock
       - run: python -m playwright install chromium
-      - name: Run M5-C regression tests
-        run: python -m pytest -q tests/test_batch.py -k "approved_status_survives_batch_move or source_change_invalidates_approval_and_export or uploaded_answers_process_only_current_files or xlsx_expansion_is_bounded_before_xml_is_read or aggregate_limits_report_first_excess_source_cell"
+      - name: Run complete test suite
+        run: python -m pytest -q
+      - name: Verify clean worktree
+        working-directory: .
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain=v1
+          if ($changes) {
+            $changes
+            throw "Tests changed tracked or untracked repository files"
+          }
