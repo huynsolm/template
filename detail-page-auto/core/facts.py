@@ -64,10 +64,9 @@ class ProductFacts(Model):
     def validate_images(self, image_dir: Path):
         if not self.images:
             raise ValueError('images: at least one image required')
-        sections=[{'id':'hero-1','type':'hero','headline':'����','image':self.images[0].path}]
+        sections=[{'id':'hero-1','type':'hero','headline':'검증','image':self.images[0].path}]
         # Use M1 validation for every supplied image, including unused role images.
-        sections += [{'id':f'solution-{i}','type':'solution','title':'����','body':'����','image':image.path} for i,image in enumerate(self.images[1:],1)]
+        sections += [{'id':f'solution-{i}','type':'solution','title':'검증','body':'검증','image':image.path} for i,image in enumerate(self.images[1:],1)]
         document=Document.model_validate({'schema_version':'1.0','product':self.product.model_dump(),'sections':sections})
         return collect_images(document,image_dir)
-
 

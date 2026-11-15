@@ -5,7 +5,7 @@ from collections import defaultdict
 
 EMAIL = re.compile(r'(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])', re.IGNORECASE)
 PHONE = re.compile(r'(?<!\d)0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)')
-ORDER = re.compile(r'(?:�ֹ�\s*(?:��ȣ|ID)|order\s*(?:no\.?|number|id)?)[\s:#-]*[A-Z0-9-]{6,}', re.IGNORECASE)
+ORDER = re.compile(r'(?:주문\s*(?:번호|ID)|order\s*(?:no\.?|number|id)?)[\s:#-]*[A-Z0-9-]{6,}', re.IGNORECASE)
 
 
 def _value(item, name, default=''):
@@ -94,7 +94,7 @@ def reference_reviews(facts, document, *, n=8, min_length=15):
                 reviews.append({
                     'section_id': section_id,
                     'field_path': field_path,
-                    'reason': '���� �ڷ�� ǥ�� ����',
+                    'reason': '참고 자료와 표현 유사',
                     'detail': {**match, 'reference_id': reference.id, 'reference_label': reference.label},
                     'fact_ids': [],
                 })
@@ -105,7 +105,7 @@ def reference_reviews(facts, document, *, n=8, min_length=15):
                 reviews.append({
                     'section_id': section_id,
                     'field_path': field_path,
-                    'reason': '���� �ڷ��� ����硤�귣�� �̸� ����',
+                    'reason': '참고 자료의 경쟁사·브랜드 이름 포함',
                     'detail': {'name': name, 'start': start, 'end': start + len(name),
                                'text': text[start:start + len(name)]},
                     'fact_ids': [],
@@ -129,4 +129,3 @@ def personal_data_warnings(references):
                     'text': match.group(0),
                 })
     return findings
-
