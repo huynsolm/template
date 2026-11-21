@@ -1,0 +1,11 @@
+.overlay::after { background: linear-gradient(transparent 10%, var(--background) 74%); }
+.overlay .hero-copy { color: var(--text); max-width: 720px; }
+.hero .eyebrow { border-bottom: 4px solid var(--brand); width: fit-content; }
+.features .cards .point:last-child { grid-column: 1 / -1; background: var(--brand); color: var(--on-brand); }
+.features .cards .point:last-child .point-number { color: var(--on-brand); }
+.structure { background: var(--alternate); }
+.overlay .hero-copy { background: var(--background); max-width: none; }
+.overlay { align-items: start; }
+.overlay::after { background: linear-gradient(var(--background) 14%, transparent 65%); }
+.overlay .hero-copy { text-align: center; }
+.hero .eyebrow { margin-inline: auto; }

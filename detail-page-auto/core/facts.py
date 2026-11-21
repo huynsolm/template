@@ -1,8 +1,8 @@
 """Seller-owned facts; no generated commercial data."""
 from typing import Annotated, Literal
 from pathlib import Path
-from pydantic import Field, model_validator
-from .schema import Model, Product, ReviewItem, Text, Body, Document
+from pydantic import Field, ValidationInfo, field_validator, model_validator
+from .schema import Model, Product, ReviewItem, Text, Body, Document, Highlight, SpecTable, StructureItem, Title
 from .collect import collect_images
 from .images import Processing
 
@@ -20,7 +20,7 @@ class Fact(Model):
 
 class ImageRef(Model):
     path: Text
-    role: Literal['hero','feature','solution','other']
+    role: Literal['hero','feature','solution','other','detail','lifestyle','diagram']
     alt: Text | None = None
     processing: Processing = Field(default_factory=Processing)
     derived_path: Text | None = None
@@ -40,11 +40,32 @@ class ProductFacts(Model):
     schema_version: Literal['1.0']
     product: Product
     facts: list[Fact]
-    images: list[ImageRef]
+    images: list[ImageRef] = Field(max_length=20)
     reviews: Annotated[list[ReviewItem], Field(max_length=10)] = Field(default_factory=list)
     notice: Body | None = None
     references: list[Reference] = Field(default_factory=list)
     reference_names: list[Annotated[Text, Field(max_length=100)]] = Field(default_factory=list)
+
+    highlights: list[Highlight] = Field(default_factory=list, max_length=4)
+    targets: list[Title] = Field(default_factory=list, max_length=12)
+    structure: list[StructureItem] = Field(default_factory=list, max_length=8)
+    spec_table: SpecTable | None = None
+
+    @field_validator('images')
+    @classmethod
+    def distinct_photos(cls, images):
+        if len({image.path for image in images}) > 10:
+            raise ValueError('서로 다른 사진 파일은 최대 10개까지 입력할 수 있습니다.')
+        return images
+
+    @field_validator('highlights')
+    @classmethod
+    def highlight_evidence(cls, values, info: ValidationInfo):
+        ids = {fact.id for fact in info.data.get('facts', [])}
+        for index, value in enumerate(values, 1):
+            if value.fact_id not in ids:
+                raise ValueError(f'{index}행: 존재하지 않는 사실 ID {value.fact_id}')
+        return values
 
     @model_validator(mode='after')
     def ids(self):

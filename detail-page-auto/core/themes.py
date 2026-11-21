@@ -6,7 +6,17 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 THEMES_ROOT = Path(__file__).resolve().parents[1] / 'themes'
-THEME_IDS = ('classic', 'minimal', 'bold')
+LEGACY_THEMES = ('classic', 'minimal', 'bold')
+THEME_IDS = (*LEGACY_THEMES, 'modern', 'natural', 'impact', 'industrial')
+DEFAULT_THEME = 'modern'
+VARIANTS = {
+    'hero': ('overlay', 'arch', 'poster'),
+    'pain': ('cards', 'lines', 'checklist'),
+    'solution': ('standard', 'quote'),
+    'features': ('numbered', 'cards', 'centered'),
+    'stats': ('band', 'tiles'),
+    'spec': ('dark', 'card', 'plain'),
+}
 COLOR = r'^#[0-9a-fA-F]{6}$'
 
 
@@ -24,6 +34,13 @@ class Tokens(BaseModel):
     radius: StrictInt = Field(ge=0, le=100)
 
 
+class FontRoles(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    heading: str
+    body: str
+    display: str | None = None
+
+
 class Theme(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str
@@ -31,14 +48,16 @@ class Theme(BaseModel):
     description: str = Field(min_length=1)
     contrast_policy: Literal["legacy", "aa"]
     tokens: Tokens
+    fonts: FontRoles | None = None
+    variants: dict[str, str] = Field(default_factory=dict)
 
 
-def validate_css(css: str) -> None:
+def validate_css(css: str, *, allow_legacy_font=True) -> None:
     # Escapes and comments can conceal tokens; bundled themes require neither.
     if re.search(r'\\|/\*|@import|https?:|//', css, re.I):
         raise ValueError('theme CSS contains forbidden external or obfuscated reference')
     for value in re.findall(r'url\s*\((.*?)\)', css, re.I | re.S):
-        if value.strip().strip('\'"') != 'fonts/NotoSansCJK-Regular.ttc':
+        if not allow_legacy_font or value.strip().strip('\'"') != 'fonts/NotoSansCJK-Regular.ttc':
             raise ValueError('theme CSS permits only the bundled Korean font URL')
     if re.search(r'url\s*\(', re.sub(r'url\s*\([^)]*\)', '', css, flags=re.I), re.I):
         raise ValueError('malformed theme CSS URL')
@@ -54,7 +73,16 @@ def load_theme(theme_id: str) -> Theme:
     expected='legacy' if theme_id=='classic' else 'aa'
     if theme.contrast_policy!=expected:
         raise ValueError('theme contrast policy does not match its compatibility mode')
-    validate_css((path/'theme.css').read_text(encoding='utf-8'))
+    if theme_id not in LEGACY_THEMES and (theme.fonts is None or set(theme.variants) != set(VARIANTS)):
+        raise ValueError('new theme must specify fonts and variants')
+    for kind, variant in theme.variants.items():
+        if variant not in VARIANTS.get(kind, ()):
+            raise ValueError(f'invalid layout: {kind}/{variant}')
+    if theme.fonts:
+        from .fonts import load_font
+        for font_id in set(theme.fonts.model_dump(exclude_none=True).values()):
+            load_font(font_id)
+    validate_css((path/'theme.css').read_text(encoding='utf-8'), allow_legacy_font=theme_id in LEGACY_THEMES)
     return theme
 
 
@@ -69,6 +97,10 @@ def contrast_ratio(foreground: str, background: str) -> float:
     return (b+.05)/(a+.05)
 
 
+def effective_brand(manifest: dict, fallback: str) -> str:
+    return manifest.get('brand_color', manifest.get('resolved_colors', {}).get('brand-original', fallback))
+
+
 def contrast_metadata(styles: dict) -> dict:
     """The same applied palette and policy travel with each job and snapshot."""
     return {key:styles[key] for key in (
@@ -81,6 +113,11 @@ def theme_styles(theme_id: str, brand: str) -> dict:
         raise ValueError('invalid brand color')
     tokens = theme.tokens.model_dump()
     css=(THEMES_ROOT/theme_id/'theme.css').read_text(encoding='utf-8')
+    if theme.fonts:
+        shared = (THEMES_ROOT/'design-system.css').read_text(encoding='utf-8')
+        rich = (THEMES_ROOT.parent/'templates/rich.css').read_text(encoding='utf-8')
+        css = rich + '\n' + shared + '\n' + css
+        validate_css(css, allow_legacy_font=False)
     adjustments=[]; reviews=[]; pairs=[]
     # Classic is the original fixed stylesheet and original main --brand attribute.
     # Never derive a replacement color or change its HTML, even for poor contrast.
@@ -123,8 +160,11 @@ def theme_styles(theme_id: str, brand: str) -> dict:
     variables={k.replace('_','-'):str(v)+('px' if k in ('padding_y','padding_x','radius') else '') for k,v in tokens.items()}
     colors={k.replace('_','-'):v for k,v in tokens.items() if isinstance(v,str) and v.startswith('#')}
     colors.update({'brand':brand,'brand-original':brand,'brand-text':accent,'brand-background':brand})
-    if theme_id=='bold':
+    if theme_id=='bold' or theme.fonts:
         colors['on-brand']=correct('on-brand','#ffffff',[brand])
+    if theme.fonts:
+        colors['dark-text'] = correct('dark-text', '#ffffff', ['#172421'])
+        colors['dark-surface'] = '#172421'
     variables.update(colors)
     return {'css':css,'variables':'; '.join('--'+k+': '+v for k,v in variables.items()),
             'contrast_policy':'aa','resolved_colors':colors,

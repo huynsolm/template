@@ -5,13 +5,14 @@ import io
 import json
 import re
 from pathlib import Path
+import tempfile
 import zipfile
 
-from .assemble import DEFAULT_TERMS
+from .assemble import DEFAULT_TERMS, seller_sections
 from .facts import ProductFacts
 from .schema import Document
 from .workflow import now, read_json, write_json
-from .themes import theme_styles, contrast_metadata, load_theme
+from .themes import theme_styles, contrast_metadata, effective_brand, load_theme
 
 
 def provenance_path(job: Path, name: str) -> Path:
@@ -35,17 +36,10 @@ def _seller_check(job, document):
     facts=ProductFacts.model_validate(read_json(provenance_path(job,'facts.json')))
     if document.product!=facts.product:
         raise ValueError('product: seller-owned fields must match facts.json')
-    actual={kind:[s.model_dump(exclude_none=True) for s in document.sections if s.type==kind] for kind in ('review','spec','notice')}
-    expected={'review':[], 'spec':[], 'notice':[]}
-    if facts.reviews:
-        expected['review']=[{'id':'review-1','type':'review','items':[r.model_dump() for r in facts.reviews]}]
-    rows=[[f.id,f.text] for f in facts.facts if f.kind=='spec']
-    if rows:
-        expected['spec']=[{'id':'spec-1','type':'spec','rows':rows}]
-    if facts.notice:
-        expected['notice']=[{'id':'notice-1','type':'notice','body':facts.notice}]
-    for kind in expected:
-        if actual[kind]!=expected[kind]:
+    expected = seller_sections(facts)
+    for kind in ('review', 'spec', 'notice', 'stats', 'targets', 'structure', 'gallery', 'image'):
+        actual = [section.model_dump(exclude_none=True) for section in document.sections if section.type == kind]
+        if actual != ([expected[kind]] if kind in expected else []):
             raise ValueError(kind+': seller-owned section must match facts.json')
     return facts
 
@@ -153,7 +147,7 @@ def reassess_draft(job: Path, document: Document | None = None, evidence=None) -
     from .similarity import reference_reviews
     review+=reference_reviews(facts,document)
     manifest=read_json(job/'manifest.json')
-    styles=theme_styles(manifest.get('theme','classic'),document.product.brand_color)
+    styles=theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))
     return review+manifest.get('image_reviews',[])+styles['contrast_reviews']
 
 
@@ -207,7 +201,7 @@ def save_draft(job: Path, data: dict, locked_sections: list[str], evidence=None)
     write_json(job/'edits.json',{'locked_sections':locked_sections})
     write_json(job/'review.json',review)
     manifest=read_json(job/'manifest.json')
-    manifest.update(contrast_metadata(theme_styles(manifest.get('theme','classic'),document.product.brand_color)))
+    manifest.update(contrast_metadata(theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))))
     manifest.update(updated_at=now(),needs_review=bool(review),review_accepted=False)
     write_json(job/'manifest.json',manifest)
     if (job/'preview.json').exists(): (job/'preview.json').unlink()
@@ -222,7 +216,7 @@ def snapshot_bundle(bundle: Path, draft_bytes: bytes, review: list[dict]) -> Non
     write_json(bundle/'manifest.json',manifest)
 
 
-def preview_job(job: Path, theme=None) -> Path:
+def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     from .render import render
     job=Path(job)
     draft_bytes=(job/'draft.json').read_bytes()
@@ -230,15 +224,17 @@ def preview_job(job: Path, theme=None) -> Path:
     review=[item for item in reassess_draft(job,document) if item.get('section_id')!='theme']
     manifest=read_json(job/'manifest.json')
     theme=theme if theme is not None else manifest.get('theme','classic')
-    bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme)
+    previous_brand = effective_brand(manifest,document.product.brand_color)
+    brand = brand_color if brand_color is not None else previous_brand
+    bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme,brand_color=brand)
     rendered=read_json(bundle/'manifest.json')
     review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']
     snapshot_bundle(bundle,draft_bytes,review)
-    if manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
+    if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
         manifest.update(review_accepted=False)
         manifest.pop('rendered_job',None)
     manifest.update(contrast_metadata(rendered))
-    manifest.update(theme=theme,needs_review=bool(review))
+    manifest.update(theme=theme,brand_color=brand,needs_review=bool(review))
     write_json(job/'review.json',review)
     write_json(job/'manifest.json',manifest)
     write_json(job/'preview.json',{'bundle':str(bundle.relative_to(job))})
@@ -251,12 +247,46 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
         job=Path(job); bundle=Path(bundle)
         current=read_json(job/'manifest.json')
         snapshot=read_json(bundle/'manifest.json')
-        digest=hashlib.sha256((job/'draft.json').read_bytes()).hexdigest()
+        draft = (job/'draft.json').read_bytes()
+        digest = hashlib.sha256(draft).hexdigest()
+        fallback = json.loads(draft)['product']['brand_color']
+        if effective_brand(snapshot,fallback).lower() != effective_brand(current,fallback).lower():
+            return False
         return (snapshot.get('draft_sha256')==digest
                 and snapshot.get('theme','classic')==current.get('theme','classic')
                 and snapshot.get('contrast_policy')==load_theme(current.get('theme','classic')).contrast_policy)
-    except (OSError,ValueError):
+    except (OSError,ValueError,KeyError):
         return False
+
+
+def gallery_thumbnail(job: Path, theme: str) -> Path:
+    """Cache cropped renders by draft, image contents, theme and effective color."""
+    from .collect import collect_images
+    from .render import render
+
+    draft = (job/'draft.json').read_bytes()
+    document = Document.model_validate_json(draft)
+    brand = effective_brand(read_json(job/'manifest.json'), document.product.brand_color)
+    digest = hashlib.sha256(draft)
+    digest.update(theme.encode())
+    digest.update(brand.lower().encode())
+    for source in collect_images(document,job).values():
+        with source.open('rb') as stream:
+            digest.update(hashlib.file_digest(stream, 'sha256').digest())
+    cache = job/'gallery'
+    cache.mkdir(exist_ok=True)
+    target = cache/(digest.hexdigest()+'.png')
+    if not target.is_file():
+        thumbnail = render(document,job,cache,theme=theme,brand_color=brand,thumbnail=True)
+        with tempfile.NamedTemporaryFile(dir=cache, delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                stream.write(thumbnail)
+                stream.close()
+                temporary.replace(target)
+            finally:
+                temporary.unlink(missing_ok=True)
+    return target
 
 
 def build_zip(bundle: Path) -> bytes:

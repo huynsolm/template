@@ -1,0 +1,5 @@
+<h2>구조와 구성</h2>
+<div class="structure-layout">
+  {% if section.get('image') %}<img src="{{ section.image }}" alt="상품 구조도">{% endif %}
+  <dl>{% for item in section['items'] %}<div><dt>{{ item.name }}</dt><dd>{{ item.desc }}</dd></div>{% endfor %}</dl>
+</div>

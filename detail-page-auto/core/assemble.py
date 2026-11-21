@@ -5,6 +5,41 @@ from .schema import Document
 DEFAULT_TERMS=('인증','효능','효과','치료','예방','완치','개선','최고','최상','유일','우수')
 
 
+def seller_sections(facts):
+    sections = {}
+    def add(kind, **values):
+        sections[kind] = {'id': f'{kind}-1', 'type': kind, **values}
+
+    if facts.highlights:
+        add('stats', items=[item.model_dump() for item in facts.highlights])
+    if facts.targets:
+        add('targets', items=facts.targets)
+    diagram = next((i for i in facts.images if i.role == 'diagram'), None)
+    if facts.structure:
+        add('structure', items=[item.model_dump() for item in facts.structure],
+            **({'image': diagram.effective_path} if diagram else {}))
+    lifestyle = [i for i in facts.images if i.role == 'lifestyle']
+    if lifestyle:
+        add('image', image=lifestyle[0].effective_path)
+    photos = [i for i in facts.images if i.role == 'detail'] + lifestyle[1:]
+    gallery = {}
+    for photo in photos:
+        gallery.setdefault(photo.path, {'image': photo.effective_path,
+                           **({'alt': photo.alt} if photo.alt else {})})
+    if gallery:
+        add('gallery', items=list(gallery.values()))
+    if facts.reviews:
+        add('review', items=[i.model_dump() for i in facts.reviews])
+    rows = [[f.id, f.text] for f in facts.facts if f.kind == 'spec']
+    if facts.spec_table:
+        add('spec', spec_table=facts.spec_table.model_dump())
+    elif rows:
+        add('spec', rows=rows)
+    if facts.notice:
+        add('notice', body=facts.notice)
+    return sections
+
+
 def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
     fact_map={f.id:f for f in facts.facts}
     review=[]
@@ -18,6 +53,9 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
         if (re.search(r'\d|[%％]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
             flag('수치·인증·효능 표현에 claim/spec 근거 확인 필요')
     sections=[]
+    seller = seller_sections(facts)
+    def append_seller(*kinds):
+        sections.extend(seller[kind] for kind in kinds if kind in seller)
     def add(kind, **values):
         sid=f'{kind}-1'
         sections.append({'id':sid,'type':kind,**values})
@@ -26,6 +64,7 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
     if hero is None: raise ValueError('images: hero or first image required')
     add('hero',headline=copy.hero.headline,subcopy=copy.hero.subcopy,image=hero.effective_path)
     check(copy.hero,'hero-1','hero')
+    append_seller('stats')
     add('pain',title=copy.pain.title,items=[i.text for i in copy.pain.items])
     check(copy.pain,'pain-1','pain.title')
     for n,i in enumerate(copy.pain.items): check(i,'pain-1',f'pain.items.{n}.text')
@@ -33,28 +72,29 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
     solution_image=next((i for i in facts.images if i.role=='solution'),None)
     if solution_image: solution['image']=solution_image.effective_path
     add('solution',**solution); check(copy.solution,'solution-1','solution')
-    feature_images=iter(i.effective_path for i in facts.images if i.role=='feature')
+    append_seller('image')
+    feature_images=iter(i.effective_path for i in facts.images if i.role in ('feature', 'detail'))
     features=[]
     for n,i in enumerate(copy.features):
         item={'title':i.title,'desc':i.desc}; image=next(feature_images,None)
         if image: item['image']=image
         features.append(item); check(i,'features-1',f'features.{n}')
     add('features',items=features)
+    append_seller('structure', 'targets', 'gallery')
     add('how_to',steps=[{'title':i.title,'desc':i.desc} for i in copy.how_to])
     for n,i in enumerate(copy.how_to): check(i,'how_to-1',f'how_to.{n}')
-    if facts.reviews: add('review',items=[i.model_dump() for i in facts.reviews])
-    rows=[[f.id,f.text] for f in facts.facts if f.kind=='spec']
-    if rows: add('spec',rows=rows)
+    append_seller('review', 'spec')
     add('faq',items=[{'q':i.q,'a':i.a} for i in copy.faq])
     for n,i in enumerate(copy.faq): check(i,'faq-1',f'faq.{n}')
-    if facts.notice: add('notice',body=facts.notice)
+    append_seller('notice')
     if locked:
         for index,section in enumerate(sections):
             if section['id'] in locked: sections[index]=locked[section['id']]
         current={s['id'] for s in sections}
         sections.extend(section for sid,section in locked.items() if sid not in current)
         review=[item for item in review if item['section_id'] not in locked]
-    document=Document.model_validate({'schema_version':'1.0','product':facts.product.model_dump(),'sections':sections})
+    rich = any(s['type'] in ('stats', 'targets', 'structure', 'gallery', 'image') or 'spec_table' in s for s in sections)
+    document=Document.model_validate({'schema_version':'1.1' if rich else '1.0','product':facts.product.model_dump(),'sections':sections})
     from .similarity import reference_reviews
     review+=reference_reviews(facts,document)
     return document,review

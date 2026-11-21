@@ -1,0 +1,10 @@
+.hero-stage { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.hero-stage img { width: 530px; height: 500px; border-radius: 270px 270px 20px 20px; }
+.hero-copy { padding-top: 0; }
+h1, h2, h3 { font-weight: 700; }
+.pain-list li { border: 0; border-bottom: 1px solid var(--border); }
+.quote { padding: 36px; border-inline-start: 6px solid var(--brand); background: var(--alternate); }
+.solution, .features > h2, .spec h2 { text-align: center; }
+.pain { text-align: center; }
+.quote { border-inline-start: 0; }
+.quote h2::before { content: '“'; color: var(--brand-text); margin-right: .2em; }

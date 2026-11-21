@@ -9,8 +9,8 @@ from .collect import collect_images
 
 
 def stage_uploads(files, output: Path):
-    if not 1 <= len(files) <= 5:
-        raise ValueError('사진은 1~5장까지 올릴 수 있습니다.')
+    if not 1 <= len(files) <= 10:
+        raise ValueError('사진은 1~10장까지 올릴 수 있습니다.')
     output=Path(output); output.mkdir(parents=True,exist_ok=True)
     root=Path(tempfile.mkdtemp(prefix='job-input-',dir=output))
     try:

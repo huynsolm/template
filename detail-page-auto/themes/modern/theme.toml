@@ -1,0 +1,25 @@
+id = "modern"
+name = "프리미엄 모던"
+description = "깊은 사진과 대형 포인트 번호"
+contrast_policy = "aa"
+fonts = { heading = "pretendard", body = "pretendard" }
+
+[variants]
+hero = "overlay"
+pain = "cards"
+solution = "standard"
+features = "numbered"
+stats = "band"
+spec = "dark"
+
+[tokens]
+background = "#ffffff"
+alternate = "#eff3f1"
+hero = "#ffffff"
+text = "#172421"
+muted = "#43524d"
+border = "#c2d0ca"
+padding_y = 90
+padding_x = 60
+font_scale = 1.0
+radius = 20

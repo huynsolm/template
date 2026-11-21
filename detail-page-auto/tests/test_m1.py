@@ -62,7 +62,7 @@ def test_bad_images(tmp_path, data, case):
         with (root/'product.png').open('ab') as f: f.write(b'0'*(10*1024*1024))
     if case=='pixels': Image.new('1',(5000,4001)).save(root/'product.png')
     if case=='count':
-        for i in range(6):
+        for i in range(10):
             shutil.copy(ROOT/'samples/product.png',root/f'{i}.png')
             data['sections'].append({'id':f'x{i}','type':'solution','title':'특징','body':'설명','image':f'{i}.png'})
     with pytest.raises(ValueError): collect_images(Document.model_validate(data),root)

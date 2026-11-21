@@ -1,0 +1,5 @@
+.hero { padding-block: 90px; background: var(--dark-surface); }
+.overlay > img { height: 590px; }
+.overlay .eyebrow { border-left: 5px solid var(--brand); padding-left: 12px; }
+.pain-list.cards { grid-template-columns: 1fr; }
+.numbered .point-number { font-size: 92px; }

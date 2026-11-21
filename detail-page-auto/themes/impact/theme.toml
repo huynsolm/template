@@ -1,0 +1,25 @@
+id = "impact"
+name = "임팩트"
+description = "포스터형 사진과 굵은 카드"
+contrast_policy = "aa"
+fonts = { heading = "black-han-sans", body = "pretendard" }
+
+[variants]
+hero = "poster"
+pain = "checklist"
+solution = "standard"
+features = "cards"
+stats = "tiles"
+spec = "plain"
+
+[tokens]
+background = "#fffdf5"
+alternate = "#fff1cc"
+hero = "#fffdf5"
+text = "#211c16"
+muted = "#494033"
+border = "#9b8a70"
+padding_y = 90
+padding_x = 60
+font_scale = 1.0
+radius = 0

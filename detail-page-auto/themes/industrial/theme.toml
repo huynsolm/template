@@ -1,0 +1,25 @@
+id = "industrial"
+name = "B2B·설비"
+description = "밝은 사진과 기술 사양 중심"
+contrast_policy = "aa"
+fonts = { heading = "pretendard", body = "pretendard" }
+
+[variants]
+hero = "overlay"
+pain = "cards"
+solution = "standard"
+features = "cards"
+stats = "band"
+spec = "dark"
+
+[tokens]
+background = "#ffffff"
+alternate = "#edf3f6"
+hero = "#ffffff"
+text = "#182b34"
+muted = "#415665"
+border = "#bac9d0"
+padding_y = 90
+padding_x = 60
+font_scale = 1.0
+radius = 8

@@ -113,7 +113,7 @@ def make_job(tmp_path, brand='#FFFF00'):
     from core.workflow import create_job, ingest_job
     data=json.loads((ROOT/'samples/facts.json').read_text())
     data['product']['brand_color']=brand
-    job=create_job(ProductFacts.model_validate(data), ROOT/'samples', tmp_path)
+    job=create_job(ProductFacts.model_validate(data), ROOT/'samples', tmp_path,theme='classic')
     ingest_job(job, (ROOT/'samples/answer.txt').read_text())
     return job
 
@@ -151,7 +151,8 @@ def test_theme_snapshots_zip_and_accept_preserve_history(tmp_path):
 def test_cli_theme_option(command):
     result=subprocess.run([sys.executable, str(ROOT/'cli.py'), command, '--help'],capture_output=True,text=True)
     assert result.returncode==0
-    assert '--theme {classic,minimal,bold}' in result.stdout
+    assert '--theme {classic,minimal,bold,modern,natural,impact,industrial}' in result.stdout
+    assert '--brand-color #RRGGBB' in result.stdout
 
 
 def test_m1_cli_theme(tmp_path):

@@ -19,6 +19,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .facts import ProductFacts
+from .themes import THEME_IDS, effective_brand, load_theme
 from .workflow import create_job, read_json, write_json
 
 HEADERS = {
@@ -32,7 +33,7 @@ REQUIRED_SHEETS = ('products', 'facts', 'images')
 DESCRIPTIONS = {
     'product_id': '상품을 구분하는 이름. 영문·숫자·-·_ 1~40자. 파일 이름에 쓰입니다.',
     '상품명': '상품 이름 (필수)', '카테고리': '분류 (필수)', '가격': '판매 가격 문구 (필수). AI는 가격을 만들지 않습니다.',
-    '브랜드 색': '#RRGGBB 형식 (예: #305b46)', '테마': 'classic(기본) / minimal / bold', '프로필': '내보내기 프로필: generic(기본) / smartstore / coupang / 사용자 프로필 이름',
+    '브랜드 색': '#RRGGBB 형식 (예: #305b46)', '테마': ' / '.join(THEME_IDS), '프로필': '내보내기 프로필: generic(기본) / smartstore / coupang / 사용자 프로필 이름',
     '사진 폴더': '사진 루트 폴더 아래의 상품별 폴더 이름. 루트 밖 경로는 쓸 수 없습니다.', '안내 문구': '구매 안내(선택)',
     'fact_id': '사실 id (상품 안에서 중복 불가). AI 답변의 근거로 쓰입니다.', '문구': '판매자가 확인한 사실 문장 (최대 500자)',
     '종류': '스펙 / 특징 / 사용법 / 주장 / 기타. 주장은 근거가 필요합니다.', '근거': '주장의 근거 (주장일 때 필수)',
@@ -230,7 +231,6 @@ def _locate(loc, rows) -> tuple[str, int, str]:
 
 def _validate_product(number, record, children, photo_root: Path):
     """Return (ProductFacts, photo folder, theme, profile, []) or (None, ..., errors)."""
-    from .themes import load_theme
     from .export import load_profile
     errors = []
     theme = record['테마'] or 'classic'
@@ -238,7 +238,7 @@ def _validate_product(number, record, children, photo_root: Path):
     try:
         load_theme(theme)
     except ValueError:
-        errors.append(_error('products', number, '테마', f'알 수 없는 테마: {theme} (classic, minimal, bold)'))
+        errors.append(_error('products', number, '테마', f'알 수 없는 테마: {theme} ({", ".join(THEME_IDS)})'))
     try:
         load_profile(profile)
     except ValueError as exc:
@@ -289,8 +289,8 @@ def _validate_product(number, record, children, photo_root: Path):
     distinct_images = set()
     for index, image in enumerate(images):
         distinct_images.add(image['path'])
-        if len(distinct_images) > 5:
-            errors.append(_error('images', rows['images'][index], '파일명', '사진은 상품마다 서로 다른 파일 최대 5개까지 입력할 수 있습니다'))
+        if len(distinct_images) > 10:
+            errors.append(_error('images', rows['images'][index], '파일명', '사진은 상품마다 서로 다른 파일 최대 10개까지 입력할 수 있습니다'))
             break
     if errors:
         return None, folder, theme, profile, errors
@@ -385,7 +385,9 @@ def _approval_is_current(job: Path, accepted: Path, manifest: dict) -> bool:
         if (job / 'facts.json').read_bytes() != (accepted / 'facts.json').read_bytes():
             return False
         source = read_json(job / 'manifest.json')
-        from .themes import load_theme
+        fallback = read_json(job/'draft.json')['product']['brand_color']
+        if effective_brand(manifest, fallback).lower() != effective_brand(source, fallback).lower():
+            return False
         return (manifest.get('theme', 'classic') == source.get('theme', 'classic')
                 and manifest.get('contrast_policy') == load_theme(source.get('theme', 'classic')).contrast_policy)
     except (OSError, ValueError, KeyError):
@@ -472,7 +474,7 @@ def write_template(path: Path, rows: int = MAX_PRODUCTS * 20) -> Path:
     from openpyxl.worksheet.datavalidation import DataValidation
     book = Workbook()
     book.remove(book.active)
-    lists = {('products','테마'): ('classic,minimal,bold', True),
+    lists = {('products','테마'): (','.join(THEME_IDS), True),
              ('products','프로필'): ('generic,smartstore,coupang', False),
              ('facts','종류'): (','.join(KINDS), True),
              ('references','종류'): (','.join(REFERENCE_KINDS), True),

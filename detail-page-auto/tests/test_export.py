@@ -309,7 +309,7 @@ def accepted(tmp_path):
     from core.facts import ProductFacts
     from core.workflow import accept_job, create_job, ingest_job
     facts = ProductFacts.model_validate_json((ROOT / 'samples/facts.json').read_text(encoding='utf-8'))
-    job = create_job(facts, ROOT / 'samples', tmp_path)
+    job = create_job(facts, ROOT / 'samples', tmp_path, theme='classic')
     ingest_job(job, (ROOT / 'samples/answer.txt').read_text(encoding='utf-8'))
     return accept_job(job)
 

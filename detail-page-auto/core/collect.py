@@ -16,7 +16,7 @@ def collect_images(document: Document, root: Path) -> dict[str, Path]:
         elif isinstance(value,list):
             for item in value: visit(item)
     visit(document.model_dump())
-    if len(paths)>5: raise ValueError('images: maximum 5 distinct images')
+    if len(paths)>10: raise ValueError('images: maximum 10 distinct images')
     for name in paths:
         relative=Path(name)
         if relative.is_absolute() or '..' in relative.parts:

@@ -1,0 +1,4 @@
+<div class="quote">
+  <h2>{{ section.title }}</h2><p>{{ section.body }}</p>
+</div>
+{% if section.get('image') %}<img src="{{ section.image }}" alt="{{ section.title }}">{% endif %}

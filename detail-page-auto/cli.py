@@ -23,9 +23,10 @@ def m1(argv):
     parser.add_argument('--max-height',type=int,default=4000)
     parser.add_argument('--png',action='store_true')
     parser.add_argument('--theme',choices=THEME_IDS,default='classic')
+    parser.add_argument('--brand-color', metavar='#RRGGBB')
     args=parser.parse_args(argv)
     document=Document.model_validate_json(args.input.read_text(encoding='utf-8'))
-    return render(document,args.images,args.output,args.max_height,args.png,theme=args.theme)
+    return render(document,args.images,args.output,args.max_height,args.png,theme=args.theme,brand_color=args.brand_color)
 
 
 def run_batch(args):
@@ -140,6 +141,7 @@ def main(argv=None):
             generate.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
             for themed in (ingest,generate,accept):
                 themed.add_argument('--theme',choices=THEME_IDS,default=None)
+                themed.add_argument('--brand-color', metavar='#RRGGBB')
             export=sub.add_parser('export',help='플랫폼 프로필로 규격 검사 후 ZIP 내보내기 (AI 호출 없음)')
             export.add_argument('--job',type=Path,required=True)
             export.add_argument('--profile',required=True,help='generic, smartstore, coupang 또는 profiles/user/의 사용자 프로필 이름')
@@ -173,7 +175,7 @@ def main(argv=None):
                 result=folder/name
                 result.write_bytes(data)
             elif args.command=='accept':
-                result=accept_job(args.job,theme=args.theme)
+                result=accept_job(args.job,theme=args.theme,brand_color=args.brand_color)
             elif args.command=='prompt':
                 if args.from_job:
                     if not args.regenerate: parser.error('--from-job requires --regenerate')
@@ -185,11 +187,11 @@ def main(argv=None):
             elif args.command=='ingest':
                 from core.providers import PasteProvider
                 answer=PasteProvider(args.answer).generate('')
-                result=ingest_job(args.job,answer,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme)
+                result=ingest_job(args.job,answer,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme,brand_color=args.brand_color)
             else:
                 from core.providers import CliProvider
                 provider=CliProvider(args.provider,config_path=args.providers_config,timeout=args.timeout)
-                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme)
+                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme,brand_color=args.brand_color)
         print(result.resolve())
         return 0
     except (ValueError,OSError) as exc:

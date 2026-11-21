@@ -9,9 +9,20 @@
 - 먼저 `AGENTS.md`, 이 문서, `detail-page-auto/README.md`를 읽는다.
 - 배경은 `PLAN_detail_page_automation.md`, 상세 요구사항은 `CODEX_TASK_M1.md`, `CODEX_TASK_M2.md`, `CODEX_TASK_M4.md`, `CODEX_TASK_M3.md`, `CODEX_TASK_M5.md`에 있다. 작업별 보고·검수는 `M5_A_REPORT.md`, `M5_B_REPORT.md`, `M5_C_REPORT.md`, `M5_C_REVIEW.md`에 있다.
 
-**M1~M4·M3와 M5-A(테마)·M5-B(플랫폼 프로필)·M5-C(일괄 생성)·M5-D(참고 자료)는 모두 구현됐다(2026-11-16 기준).** 완료된 마일스톤을 처음부터 다시 구현하지 않는다. 계획서에 남은 구현 항목은 없으며, 다음 구현 범위는 사용자가 새로 지정한 요청으로 정한다. 다중 사용자·배포와 URL 자동 수집은 사용자 결정으로 제외됐다. `AGENTS.md`의 현재 작업 설명은 M5 지시서 기준으로 남아 있다.
+**M1~M4·M3와 M5-A(테마)·M5-B(플랫폼 프로필)·M5-C(일괄 생성)·M5-D(참고 자료)는 모두 구현됐다(2026-11-16 기준).** 완료된 마일스톤을 처음부터 다시 구현하지 않는다. M6 범위와 승인된 디자인 방향은 `CODEX_TASK_M6.md`를 따른다. 다중 사용자·배포와 URL 자동 수집은 사용자 결정으로 제외됐다.
 
 여러 작업자가 같은 브랜치에 동시에 커밋해 충돌·중복 작업이 생긴 적이 있다. 작업 전 반드시 `git fetch` 후 원격 상태를 확인하고, 이미 반영된 수정을 다시 하지 않는다.
+
+## M6 디자인 시스템
+
+- 새 단일 작업은 `modern`이 기본이다. `natural`, `impact`, `industrial`과 기존 `classic`, `minimal`, `bold`를 선택할 수 있다. 테마 기록이 없는 작업은 `classic`으로 연다. 기존 M1의 기본 스타일과 일괄 시트의 빈 테마 기본값도 `classic`이다.
+- `core/themes.py`의 `load_theme`과 `theme_styles`가 레이아웃·글꼴·AA 토큰을 관리한다. 공용 변형은 `templates/sections/<type>/<variant>.html`에 있고 테마의 선택과 스타일은 `themes/<id>/`에 있다. 기존 문서의 기존 테마는 기존 CSS와 HTML 경로를 쓴다.
+- `core/fonts.py:load_font`는 OFL 라이선스와 로컬 WOFF2 참조를 검증한다. `core/render.py:render`는 선택한 패키지를 `assets/fonts/<id>/`에 묶고 Chromium에서 해당 글꼴이 로드됐는지 확인한다. 번들 manifest에는 `fonts`, `font_loaded`, `brand_color`가 들어간다.
+- `core/assemble.py:seller_sections`는 판매자 값으로 숫자 띠, 추천 대상, 구조, 사진, 사양을 구성하며 `core/editor.py`도 같은 함수로 값 변경을 검증한다. 새 섹션이 포함된 Document는 1.1이며 기존 1.0도 지원한다. AI 답변과 프롬프트 계약은 기존 버전을 사용한다.
+- `core/editor.py:preview_job`은 테마와 작업 색을 새 스냅샷에 적용한다. `gallery_thumbnail`은 `job/gallery/`에 문구·사진·테마·색 기준 상단 이미지를 캐시한다. `bundle_matches`는 문구·테마·색·대비 정책을 확인한다. 브랜드 색 변경은 `facts.json`과 이전 렌더링을 보존한다.
+- 상세 샘플은 `detail-page-auto/samples/facts-rich.json`과 `answer-rich.txt`다. `tools/make_screenshots.py --themes-only`로 README 상단 캡처 7장을 갱신한다.
+
+- 검증 환경은 Linux·Chromium 156이다. 전체 실행은 411개 통과, 2개 실패였다. 새 기본 테마의 영향을 받은 기존 classic 정책 픽스처를 명시한 뒤 `tests/test_export.py`, `tests/test_m6.py`, 일괄 사진 상한 테스트를 다시 실행해 79개가 통과했다. 최종 검증 집계는 기존 384개와 M6 30개, 총 414개 통과·0개 실패·0개 건너뜀이다.
 
 ## M5-A 현재 상태
 

@@ -34,7 +34,7 @@ def chromium_path(playwright_default):
     return shutil.which('chromium')
 
 
-def capture(html: Path, max_height: int = 4000):
+def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, top_only=False):
     """Load only this export's files, await assets, and return image + geometry."""
     html = Path(html).resolve()
     network = []
@@ -61,25 +61,26 @@ def capture(html: Path, max_height: int = 4000):
                 page.on('requestfailed', lambda r: failures.append(r.url))
                 # Virtual loopback origin: requests are fulfilled from disk; no socket is opened.
                 page.goto('http://127.0.0.1:18600/page.html', wait_until='load')
-                page.evaluate('''async () => {
+                page.evaluate('''async (families) => {
                     let timer;
                     try {
                         await Promise.race([
                             (async () => {
-                                await document.fonts.load('22px DetailKorean', '한글');
+                                await Promise.all(families.map(family =>
+                                    document.fonts.load('22px "' + family + '"', '한글Aa012')));
                                 await document.fonts.ready;
                                 await Promise.all([...document.images].map(image => image.decode()));
                             })(),
                             new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('asset loading timeout (15000ms)')), 15000); })
                         ]);
                     } finally { clearTimeout(timer); }
-                }''')
-                geometry = page.evaluate('''() => ({
+                }''', families)
+                geometry = page.evaluate('''families => ({
                     height: Math.ceil(document.documentElement.scrollHeight),
                     horizontal_overflow: document.documentElement.scrollWidth > 860,
-                    font_loaded: [...document.fonts].some(f => f.family === 'DetailKorean' && f.status === 'loaded'),
+                    font_loaded: families.every(name => [...document.fonts].some(f => f.family === name && f.status === 'loaded')),
                     sections: [...document.querySelectorAll('main > section')].map(s => ({id:s.dataset.section, top:Math.ceil(s.getBoundingClientRect().top), bottom:Math.ceil(s.getBoundingClientRect().bottom)}))
-                })''')
+                })''', families)
                 if failures or network:
                     raise ValueError(f'asset loading failed or forbidden request: {failures + network}')
                 if not geometry['font_loaded']:
@@ -93,7 +94,9 @@ def capture(html: Path, max_height: int = 4000):
                         raise ValueError(f"section {section['id']} exceeds maximum height {max_height}")
                 geometry['browser_version'] = browser.version
                 geometry['network_requests'] = network
-                raw = page.screenshot(full_page=True, animations='disabled')
+                if top_only:
+                    page.set_viewport_size({'width': 860, 'height': min(1800, geometry['height'])})
+                raw = page.screenshot(full_page=not top_only, animations='disabled')
                 return Image.open(io.BytesIO(raw)).convert('RGB'), geometry
             finally:
                 browser.close()
@@ -101,11 +104,17 @@ def capture(html: Path, max_height: int = 4000):
         raise ValueError(f'Chromium asset loading/rendering failed: {exc}') from exc
 
 
-def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic") -> Path:
+def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic", brand_color: str | None = None, thumbnail: bool = False) -> Path | bytes:
     if type(max_height) is not int or not 1 <= max_height <= 30000:
         raise ValueError('max_height must be an integer in 1..30000')
-    from .themes import theme_styles, contrast_metadata
-    styles = theme_styles(theme, document.product.brand_color)
+    from .themes import theme_styles, contrast_metadata, load_theme
+    from .fonts import load_font
+    brand = brand_color if brand_color is not None else document.product.brand_color
+    styles = theme_styles(theme, brand)
+    design = load_theme(theme)
+    roles = {role: load_font(font_id) for role, font_id in
+             (design.fonts.model_dump(exclude_none=True) if design.fonts else {}).items()}
+    fonts = {font.id: font for font in roles.values()}
     needs_review = bool(needs_review or styles['contrast_reviews'])
     started = time.perf_counter()
     images = collect_images(document, image_dir)
@@ -115,8 +124,18 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
     try:
         assets = job / 'assets'
         assets.mkdir()
-        shutil.copytree(ROOT / 'assets/fonts', assets / 'fonts')
-        (assets / 'theme.css').write_text(styles['css'], encoding='utf-8')
+        css = styles['css']
+        variables = styles['variables']
+        if fonts:
+            (assets / 'fonts').mkdir()
+            for font in fonts.values():
+                font.bundle(assets / 'fonts')
+            variables += ''.join(f'; --font-{role}: "{font.family}"' for role, font in roles.items())
+        else:
+            shutil.copytree(ROOT / 'assets/fonts', assets / 'fonts')
+            if document.schema_version == '1.1':
+                css += '\n' + (ROOT / 'templates/rich.css').read_text(encoding='utf-8')
+        (assets / 'theme.css').write_text(css, encoding='utf-8')
         mapping = {}
         for index, (name, source) in enumerate(images.items()):
             target = f'assets/image-{index:03}{source.suffix.lower()}'
@@ -128,12 +147,21 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                 return {key: mapping[item] if key == 'image' else rewrite(item) for key, item in value.items()}
             if isinstance(value, list): return [rewrite(item) for item in value]
             return value
+        data['product']['brand_color'] = brand
         data = rewrite(data)
         env = Environment(loader=FileSystemLoader(ROOT / 'templates'), autoescape=select_autoescape(['html']), undefined=StrictUndefined)
-        (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=styles['variables'], contrast_policy=styles['contrast_policy']), encoding='utf-8')
+        (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=variables, contrast_policy=styles['contrast_policy'], fonts=fonts.values(), variants=design.variants), encoding='utf-8')
         # The bundled JSON references bundled images, so it can be rerun with --images JOB.
         (job / 'input.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        full, geometry = capture(job / 'page.html', max_height)
+        families = [font.family for font in fonts.values()] or ['DetailKorean']
+        full, geometry = (capture(job / 'page.html', max_height, families, top_only=thumbnail)
+                          if fonts or thumbnail else capture(job / 'page.html', max_height))
+        if thumbnail:
+            full.thumbnail((270, 570), Image.Resampling.LANCZOS)
+            buffer = io.BytesIO()
+            full.save(buffer, format='PNG')
+            shutil.rmtree(job)
+            return buffer.getvalue()
         if full.width != 860 or full.height != geometry['height']:
             raise ValueError('screenshot geometry mismatch')
         cuts = [0]
@@ -155,7 +183,8 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                 item['png'] = f'page-{index:03}{draft_suffix}.png'
                 crop.save(job / item['png'], icc_profile=profile)
             pages.append(item)
-        manifest = {'theme': theme, **contrast_metadata(styles), 'needs_review': bool(needs_review), 'review_accepted': bool(accept_review), 'schema_version': '1.0', 'width': 860, 'height': full.height, 'max_height': max_height,
+        manifest = {'theme': theme, **contrast_metadata(styles), 'needs_review': bool(needs_review), 'review_accepted': bool(accept_review), 'schema_version': document.schema_version, 'brand_color': brand,
+                    'fonts': [{'id':font.id, 'family':font.family} for font in fonts.values()] or [{'id':'noto-sans-cjk','family':'DetailKorean'}], 'width': 860, 'height': full.height, 'max_height': max_height,
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],

@@ -1,6 +1,6 @@
-"""Strict versioned input contract for the nine supported sections."""
+"""Strict versioned input contract for detail-page sections."""
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationInfo, field_validator, model_validator
 
 Text = Annotated[str, StringConstraints(strict=True, min_length=1, pattern=r'\S')]
 Title = Annotated[Text, Field(max_length=80)]
@@ -70,9 +70,65 @@ class Review(Section):
     type: Literal['review']
     items: Annotated[list[ReviewItem], Field(min_length=1,max_length=10)]
 
+class Highlight(Model):
+    value: Title
+    label: Title
+    fact_id: Text
+
+class StructureItem(Model):
+    name: Title
+    desc: Short
+
+class SpecTable(Model):
+    columns: list[Title] = Field(min_length=2, max_length=8)
+    rows: list[list[Short]] = Field(min_length=1, max_length=30)
+    notes: list[Short] = Field(default_factory=list)
+
+    @field_validator('rows')
+    @classmethod
+    def row_width(cls, rows, info: ValidationInfo):
+        columns = info.data.get('columns')
+        if columns:
+            for index, row in enumerate(rows, 1):
+                if len(row) != len(columns):
+                    raise ValueError(f'사양표 {index}행의 칸 수가 열 수와 다릅니다.')
+        return rows
+
+class Stats(Section):
+    type: Literal['stats']
+    items: list[Highlight] = Field(min_length=1, max_length=4)
+
+class Targets(Section):
+    type: Literal['targets']
+    items: list[Title] = Field(min_length=1, max_length=12)
+
+class Structure(Section):
+    type: Literal['structure']
+    items: list[StructureItem] = Field(min_length=1, max_length=8)
+    image: ImagePath | None = None
+
+class ImageSection(Section):
+    type: Literal['image']
+    image: ImagePath
+
+class GalleryPhoto(Model):
+    image: ImagePath
+    alt: Text | None = None
+
+class Gallery(Section):
+    type: Literal['gallery']
+    items: list[GalleryPhoto] = Field(min_length=1, max_length=10)
+
 class Spec(Section):
     type: Literal['spec']
-    rows: Annotated[list[Annotated[list[Text], Field(min_length=2,max_length=2)]], Field(min_length=1,max_length=10)]
+    rows: list[Annotated[list[Text], Field(min_length=2, max_length=2)]] | None = Field(default=None, min_length=1, max_length=10)
+    spec_table: SpecTable | None = None
+
+    @model_validator(mode='after')
+    def one_table(self):
+        if (self.rows is None) == (self.spec_table is None):
+            raise ValueError('spec requires either rows or spec_table')
+        return self
 
 class Question(Model):
     q: Annotated[Text, Field(max_length=200)]
@@ -86,10 +142,10 @@ class Notice(Section):
     type: Literal['notice']
     body: Body
 
-SectionType = Annotated[Hero | Pain | Solution | Features | HowTo | Review | Spec | FAQ | Notice, Field(discriminator='type')]
+SectionType = Annotated[Hero | Pain | Solution | Features | HowTo | Review | Spec | FAQ | Notice | Stats | Targets | Structure | Gallery | ImageSection, Field(discriminator='type')]
 
 class Document(Model):
-    schema_version: Literal['1.0']
+    schema_version: Literal['1.0', '1.1']
     product: Product
     sections: Annotated[list[SectionType], Field(min_length=1,max_length=20)]
 
@@ -97,6 +153,11 @@ class Document(Model):
     def structure(self):
         if sum(s.type=='hero' for s in self.sections)!=1:
             raise ValueError('sections: exactly one hero required')
+        if self.schema_version == '1.0' and any(
+            s.type in ('stats', 'targets', 'structure', 'gallery', 'image')
+            or isinstance(s, Spec) and s.spec_table is not None for s in self.sections
+        ):
+            raise ValueError('new sections require schema_version 1.1')
         ids=[s.id for s in self.sections]
         if len(set(ids))!=len(ids):
             raise ValueError('sections.id: duplicate id')

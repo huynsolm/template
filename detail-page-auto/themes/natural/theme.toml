@@ -1,0 +1,25 @@
+id = "natural"
+name = "감성 내추럴"
+description = "아치 사진과 명조 제목"
+contrast_policy = "aa"
+fonts = { heading = "gowun-batang", body = "pretendard" }
+
+[variants]
+hero = "arch"
+pain = "lines"
+solution = "quote"
+features = "centered"
+stats = "band"
+spec = "card"
+
+[tokens]
+background = "#fffaf2"
+alternate = "#f2ebe0"
+hero = "#fffaf2"
+text = "#292d24"
+muted = "#4e5346"
+border = "#cbbfae"
+padding_y = 90
+padding_x = 60
+font_scale = 1.0
+radius = 28

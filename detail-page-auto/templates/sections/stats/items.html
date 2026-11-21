@@ -1,0 +1,5 @@
+<dl class="stat-list {{ variant or 'band' }}">
+  {% for item in section['items'] %}
+  <div data-fact="{{ item.fact_id }}"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
+  {% endfor %}
+</dl>

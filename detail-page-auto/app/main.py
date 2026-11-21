@@ -1,6 +1,7 @@
 """Single-user local UI. Business rules and exports live in core/."""
 import copy
 import json
+import re
 import os
 import sys
 import uuid
@@ -8,6 +9,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from pydantic import ValidationError
 
@@ -16,14 +18,14 @@ if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from core.facts import ProductFacts
 from core.workflow import create_job,ingest_job,regenerate_job,generate_job,accept_job,read_json
 from core.uploads import stage_uploads
-from core.themes import THEME_IDS
+from core.themes import THEME_IDS, effective_brand, load_theme
 from core.editor import bundle_matches
 
 STEPS=['① 상품 정보','② 프롬프트','③ 답변 붙여넣기','④ 검수·수정','⑤ 미리보기','⑥ 승인','⑦ 다운로드']
 KINDS={'스펙':'spec','특징':'feature','사용법':'usage','주장':'claim','기타':'other'}
-ROLES={'대표':'hero','특징':'feature','해결':'solution','기타':'other'}
+ROLES={'대표':'hero','특징':'feature','해결':'solution','디테일':'detail','사용 장면':'lifestyle','구조도':'diagram','기타':'other'}
 REFERENCE_KINDS={'경쟁사':'competitor','고객 목소리':'customer_voice','기타':'other'}
-NAMES={'hero':'대표 문구','pain':'고객 고민','solution':'해결','features':'특징','how_to':'사용법','review':'후기','spec':'스펙','faq':'자주 묻는 질문','notice':'배송·교환·반품 안내'}
+NAMES={'hero':'대표 문구','pain':'고객 고민','solution':'해결','features':'특징','how_to':'사용법','review':'후기','spec':'스펙','stats':'숫자 띠','targets':'추천 대상','structure':'구조와 구성','gallery':'상품 사진','image':'사용 장면','faq':'자주 묻는 질문','notice':'배송·교환·반품 안내'}
 LABELS={'product':'상품 정보','name':'상품명','category':'카테고리','price':'가격','facts':'상품 사실','text':'문구','evidence':'근거','reviews':'후기','permission_confirmed':'사용 허가 확인','hero':'대표 문구','headline':'제목','subcopy':'보조 문구','images':'사진','claim':'주장','body':'본문','features':'특징','how_to':'사용법','faq':'질문·답변','sections':'섹션'}
 S=st.session_state
 
@@ -50,10 +52,13 @@ def schedule_open(path,index):
 def form_load(data=None,image_root=None):
     data=data or {'product':{'name':'','category':'','price':'','brand_color':'#305b46'},'facts':[{'id':'fact-1','text':'','kind':'feature'}],'images':[],'reviews':[]}
     for key in list(S):
-        if key.startswith(('fact_','review_','reference_','edit_','lock_','check_','evidence_')): del S[key]
+        if key.startswith(('fact_','review_','reference_','rich_','edit_','lock_','check_','evidence_')): del S[key]
     for key,value in data['product'].items(): S['product_'+key]=value
     revision=uuid.uuid4().hex[:8]
     S['form_buffer']=copy.deepcopy(data)
+    S['rich_baseline'] = copy.deepcopy(data)
+    S['rich_input'] = {key:copy.deepcopy(data[key]) for key in ('highlights','targets','structure','spec_table') if key in data}
+    S['rich_revision'] = revision
     S['fact_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data['facts'])]
     S['review_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data.get('reviews',[]))]
     S['reference_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data.get('references',[]))]
@@ -72,6 +77,7 @@ def open_job(path):
     S['job']=str(job); S['bundle']=''; S['last_error']=''
     manifest=read_json(job/'manifest.json')
     S['theme_choice']=manifest.get('theme','classic')
+    S['preview_brand']=effective_brand(manifest,data['product']['brand_color'])
     if manifest.get('review_accepted') and manifest.get('rendered_job'):
         S['bundle']=str(job/manifest['rendered_job'])
     elif (job/'preview.json').exists():
@@ -87,6 +93,9 @@ def error_text(exc):
     labels={**NAMES,**LABELS}
     for source in sorted(labels,key=len,reverse=True): text=text.replace(source,labels[source])
     if 'claim requires evidence' in str(exc): text+='\n주장은 근거를 입력해야 저장할 수 있습니다.'
+    text=re.sub(r'List should have at most (\d+) items.*', r'최대 \1개까지 입력할 수 있습니다.', text)
+    text=re.sub(r'List should have at least (\d+) items.*', r'최소 \1개를 입력해 주세요.', text)
+    text=text.replace('String should match pattern', '빈칸 없이 올바른 형식으로 입력해 주세요. 기준')
     text=text.replace('Field required','필수 입력입니다.').replace('String should have at least 1 character','한 글자 이상 입력해 주세요.')
     text=text.replace('CLI time limit exceeded.','CLI 제한 시간을 초과했습니다. 붙여넣기 방식으로 진행하세요.').replace('CLI usage limit reached; switch to paste mode.','구독 사용량 한도에 도달했습니다. 붙여넣기 방식으로 전환하세요.')
     if 'permission_confirmed' in str(exc): text+='\n후기의 사용 허가 확인을 체크해 주세요.'
@@ -180,6 +189,7 @@ def facts_data():
     names=[name.strip() for name in S.get('reference_names_text','').split(',') if name.strip()]
     if names: data['reference_names']=names
     if S.get('notice','').strip(): data['notice']=S['notice']
+    data.update(S.get('rich_input', {}))
     S['form_buffer']=copy.deepcopy(data)
     return data
 
@@ -199,13 +209,61 @@ def photo_previews():
     for item in manifest.get('image_reviews',[]): st.warning(item['reason'])
 
 
+def rich_inputs():
+    revision = S['rich_revision']
+    if f'rich_highlights_{revision}' not in S and S.get('rich_input'):
+        S['rich_baseline'] = copy.deepcopy(S['rich_input'])
+    baseline = S['rich_baseline']
+
+    def table(key, fields, rows, visible=None):
+        edited = st.data_editor(
+            pd.DataFrame(rows, columns=list(fields), dtype=object),
+            column_config={field: (st.column_config.TextColumn(label) if visible is None or index < visible else None)
+                           for index, (field, label) in enumerate(fields.items())},
+            num_rows='dynamic', hide_index=True, key=f'rich_{key}_{revision}',
+        )
+        return edited.fillna('').to_dict('records')
+
+    rich = {}
+    with st.expander('상세 섹션 입력 (선택)'):
+        st.markdown('**숫자 띠 · 최대 4개**')
+        rich['highlights'] = table('highlights', {'value':'값','label':'라벨','fact_id':'근거 사실 ID'}, baseline.get('highlights', []))
+        field_error('highlights')
+        st.markdown('**추천 대상 · 최대 12개**')
+        targets = table('targets', {'name':'장소 또는 대상'}, [{'name':value} for value in baseline.get('targets', [])])
+        rich['targets'] = [row['name'] for row in targets]
+        field_error('targets')
+        st.markdown('**구조와 구성 · 최대 8개**')
+        rich['structure'] = table('structure', {'name':'구성 이름','desc':'설명'}, baseline.get('structure', []))
+        field_error('structure')
+        st.markdown('**다열 사양표 · 열 2~8개, 행 1~30개**')
+        spec = baseline.get('spec_table') or {}
+        columns = table('columns', {'name':'열 이름'}, [{'name':value} for value in spec.get('columns', [])])
+        names = [row['name'] for row in columns]
+        width = min(8, max(2, len(names)))
+        row_fields = {f'c{i}':f'{i+1}열' for i in range(8)}
+        baseline_rows = [dict(zip(row_fields,row)) for row in spec.get('rows', [])]
+        rows = table('spec', row_fields, baseline_rows, visible=width)
+        notes = table('notes', {'text':'사양표 주석'}, [{'text':value} for value in spec.get('notes', [])])
+        if names or rows or notes:
+            rich['spec_table'] = {'columns': names, 'rows': [list(row.values())[:width] for row in rows],
+                                  'notes': [row['text'] for row in notes]}
+        field_error('spec_table')
+    S['rich_input'] = rich
+
+
 def input_page():
     for key,value in S.get('form_buffer',{}).get('product',{}).items():
         if 'product_'+key not in S: S['product_'+key]=value
+    if 'rich_baseline' not in S:
+        S['rich_baseline'] = copy.deepcopy(S.get('form_buffer', {}))
+        S['rich_revision'] = uuid.uuid4().hex[:8]
     if 'notice' not in S: S['notice']=S.get('form_buffer',{}).get('notice','')
     st.header('① 상품 정보')
     if st.button('샘플 데이터 넣기',key='sample'):
         form_load(read_json(ROOT/'samples/facts.json'),ROOT/'samples'); st.rerun()
+    if st.button('상세 섹션 샘플 넣기',key='sample_rich'):
+        form_load(read_json(ROOT/'samples/facts-rich.json'),ROOT/'samples'); st.rerun()
     imported=st.file_uploader('기존 facts.json 불러오기',type=['json'],key='facts_upload')
     if imported and st.button('입력 양식으로 불러오기'):
         ok,data=perform('사실 불러오기',lambda:ProductFacts.model_validate_json(imported.getvalue()).model_dump(exclude_none=True))
@@ -255,8 +313,9 @@ def input_page():
     warning_names={'email':'이메일','phone':'전화번호','order_number':'주문번호'}
     for finding in personal_data_warnings(S['reference_rows']):
         st.warning(f"{warning_names[finding['kind']]} 형태가 있습니다: {finding['reference_label'] or finding['reference_id']} · 저장 전에 확인하고 지워 주세요.")
+    rich_inputs()
     st.subheader('사진')
-    st.file_uploader('상품 사진 (PNG/JPEG, 최대 5장, 장당 10MB)',type=['png','jpg','jpeg'],accept_multiple_files=True,key='photos',on_change=uploaded)
+    st.file_uploader('상품 사진 (PNG/JPEG, 최대 10장, 장당 10MB)',type=['png','jpg','jpeg'],accept_multiple_files=True,key='photos',on_change=uploaded)
     if S.get('upload_error'): st.error(S['upload_error'])
     field_error('images')
     from core.background import available
@@ -402,7 +461,7 @@ def edit_page(job):
     edited,references=editor_snapshot(job,document,units,facts)
     locks=read_json(job/'edits.json').get('locked_sections',[]) if (job/'edits.json').exists() else []
     selected=[]
-    st.info('가격·상품명·후기·스펙·안내 문구는 ① 상품 정보에서 수정하고 새 작업을 시작하세요.')
+    st.info('가격·상품명·후기·스펙·안내 문구와 상세 섹션 입력은 ① 상품 정보에서 수정하고 새 작업을 시작하세요.')
     for index,section in enumerate(edited['sections']):
         sid=section['id']; kind=section['type']
         with st.container(border=True):
@@ -469,20 +528,63 @@ def display_bundle(bundle):
     return manifest
 
 
+def design_gallery(job, selected):
+    from core.editor import gallery_thumbnail
+    from streamlit.elements.lib.image_utils import image_to_url
+    from streamlit.elements.lib.layout_utils import LayoutConfig
+
+    st.html('''<style>
+        .st-key-theme_gallery button img {
+            display: block;
+            max-height: none;
+            height: auto;
+            width: 100%;
+            margin: 0 auto .55rem;
+        }
+        .st-key-theme_gallery button:disabled img { opacity: 1; }
+    </style>''')
+    with st.container(key='theme_gallery'), st.spinner('현재 상품으로 테마 7종을 비교하는 중입니다…'):
+        for start in range(0, len(THEME_IDS), 4):
+            themes = THEME_IDS[start:start+4]
+            for column, theme in zip(st.columns(len(themes)), themes):
+                with column:
+                    name = load_theme(theme).name
+                    label = name + (' · 선택됨' if theme == selected else ' 선택')
+                    try:
+                        thumbnail = gallery_thumbnail(job, theme)
+                        url = image_to_url(thumbnail, LayoutConfig(width=270), False, 'RGB', 'PNG', f'gallery_{theme}')
+                        if url:
+                            label = f'![]({url}) {label}'
+                    except (OSError, ValueError) as exc:
+                        st.error(error_text(exc))
+                    if st.button(label, key=f'gallery_{theme}', disabled=theme == selected, width='stretch'):
+                        S['gallery_selection'] = theme
+                        st.rerun()
+
+
 def preview_page(job):
     from core.editor import preview_job
     st.header('⑤ 미리보기')
-    current_theme=read_json(job/'manifest.json').get('theme','classic')
+    manifest = read_json(job/'manifest.json')
+    current_theme = manifest.get('theme','classic')
+    current_brand = effective_brand(manifest,read_json(job/'facts.json')['product']['brand_color'])
+    if 'gallery_selection' in S:
+        S['theme_choice'] = S.pop('gallery_selection')
+    if 'preview_brand' not in S:
+        S['preview_brand'] = current_brand
     if 'theme_choice' not in S: S['theme_choice']=current_theme
     selected=st.selectbox('디자인 테마',THEME_IDS,key='theme_choice')
-    if selected!=current_theme:
-        ok,bundle=perform('테마 미리보기 렌더링',lambda:preview_job(job,theme=selected))
+    brand = st.color_picker('미리보기 브랜드 색', key='preview_brand')
+    if selected != current_theme or brand.lower() != current_brand.lower():
+        ok,bundle=perform('디자인 미리보기 렌더링',lambda:preview_job(job,theme=selected,brand_color=brand))
         if ok:
             S['bundle']=str(bundle)
             for key in list(S):
                 if key.startswith('check_'): del S[key]
         else:
             return
+    if st.toggle('디자인 갤러리', key='show_gallery'):
+        design_gallery(job, selected)
     if st.button('저장된 문구로 미리보기 생성',key='preview',disabled=S.get('busy',False)):
         bundle=Path(S['bundle']) if S.get('bundle') else None
         if bundle is None or not bundle_matches(job,bundle):
@@ -497,8 +599,9 @@ def preview_page(job):
 
 def approval_page(job):
     st.header('⑥ 승인')
-    theme=read_json(job/'manifest.json').get('theme','classic')
-    context=(str(job),theme)
+    manifest = read_json(job/'manifest.json')
+    theme = manifest.get('theme','classic')
+    context = (str(job), theme, manifest.get('brand_color'))
     if S.get('approval_context')!=context:
         for key in list(S):
             if key.startswith('check_'): del S[key]
@@ -728,7 +831,7 @@ def main():
             form_load(); S['job']=''; S['bundle']=''; S['last_error']=''; go(0)
         jobs=job_listing(outputs())
         options=[item['path'] for item in jobs]
-        labels={item['path']:f'{item["product_name"]} · {display_time(item["created_at"])} · {item["status"]}' for item in jobs}
+        labels={item['path']:f'{item["product_name"]} · {display_time(item["created_at"])} · {item["status"]} · {Path(item["path"]).name}' for item in jobs}
         if options:
             selected=st.selectbox('최근 작업',options,format_func=lambda value:labels[value],key='resume_job')
             if st.button('기존 작업 이어하기',key='resume'):

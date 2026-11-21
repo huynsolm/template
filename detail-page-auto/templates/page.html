@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=860"><title>{{ product.name }}</title><link rel="stylesheet" href="assets/theme.css"></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=860"><title>{{ product.name }}</title><link rel="stylesheet" href="assets/theme.css">{% for font in fonts | default([]) %}<link rel="stylesheet" href="assets/fonts/{{ font.id }}/fonts.css">{% endfor %}</head>
 {% if contrast_policy == "legacy" %}<body><main style="--brand: {{ product.brand_color }}">{% else %}<body style="{{ theme_variables }}"><main>{% endif %}
-{% for section in sections %}<section data-section="{{ section.id }}" class="{{ section.type }}">{% include 'sections/' ~ section.type ~ '.html' %}</section>{% endfor %}
+{% for section in sections %}<section data-section="{{ section.id }}" class="{{ section.type }}">{% set variant = (variants | default({})).get(section.type) %}{% if variant %}{% include 'sections/' ~ section.type ~ '/' ~ variant ~ '.html' %}{% elif section.type == 'spec' and section.get('spec_table') %}{% include 'sections/spec/card.html' %}{% else %}{% include 'sections/' ~ section.type ~ '.html' %}{% endif %}</section>{% endfor %}
 </main></body></html>

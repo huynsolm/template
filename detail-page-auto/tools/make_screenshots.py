@@ -110,19 +110,33 @@ def make_screenshots(tmp_path: Path, images: Path, artifacts: Path):
 
 def make_theme_screenshots(images: Path, artifacts: Path):
     """Explicit-only documentation captures; no test writes tracked images."""
-    from core.render import render, capture
-    from core.schema import Document
+    from PIL import Image
+    from core.assemble import assemble
+    from core.copy_schema import CopyDraft
+    from core.facts import ProductFacts
+    from core.ingest import extract_json
+    from core.render import render
+    from core.workflow import read_json
     from core.themes import THEME_IDS
     images.mkdir(parents=True,exist_ok=True)
     artifacts.mkdir(parents=True,exist_ok=True)
-    document=Document.model_validate_json((ROOT/'samples/product.json').read_text())
+    facts = ProductFacts.model_validate_json((ROOT/'samples/facts-rich.json').read_text())
+    copy = CopyDraft.model_validate(extract_json((ROOT/'samples/answer-rich.txt').read_text()))
+    document, _ = assemble(facts,copy)
     results={}
     for theme in THEME_IDS:
-        bundle=render(document,ROOT/'samples',artifacts,theme=theme)
-        full,_=capture(bundle/'page.html')
-        target=images/('theme-'+theme+'.png')
-        full.save(target)
-        results[theme]=str(target)
+        bundle = render(document, ROOT/'samples', artifacts, theme=theme, png=True)
+        manifest = read_json(bundle/'manifest.json')
+        top = Image.new('RGB', (860, min(1800, manifest['height'])))
+        for part in manifest['pages']:
+            if part['top'] >= top.height:
+                break
+            with Image.open(bundle/part['png']) as rendered:
+                top.paste(rendered, (0, part['top']))
+        target = images/f'theme-{theme}.png'
+        top.save(target)
+        font_bytes = sum(path.stat().st_size for path in (bundle/'assets/fonts').rglob('*') if path.is_file())
+        results[theme] = {'image': str(target), 'font_bytes': font_bytes, 'elapsed_seconds': manifest['elapsed_seconds']}
     return results
 
 
@@ -131,7 +145,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description='샘플 화면 캡처를 명시적으로 갱신합니다. pytest에서는 임시 경로만 사용합니다.')
     parser.add_argument('--images',type=Path,default=ROOT/'docs/images')
     parser.add_argument('--output',type=Path,default=ROOT/'outputs/m4-browser')
-    parser.add_argument('--themes-only',action='store_true',help='세 테마의 상세페이지 캡처만 생성')
+    parser.add_argument('--themes-only',action='store_true',help='테마 7종의 상세페이지 상단 캡처만 생성')
     args=parser.parse_args()
     if args.themes_only:
         print(json.dumps(make_theme_screenshots(args.images,args.output),ensure_ascii=False,indent=2))

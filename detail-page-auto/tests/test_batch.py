@@ -514,7 +514,7 @@ def test_xlsx_expansion_is_bounded_before_xml_is_read(tmp_path, photos):
 
 @pytest.mark.parametrize(
     ('kind', 'expected'),
-    [('reviews', ('reviews', 12, '후기')), ('images', ('images', 7, '파일명'))],
+    [('reviews', ('reviews', 12, '후기')), ('images', ('images', 12, '파일명'))],
 )
 def test_aggregate_limits_report_first_excess_source_cell(tmp_path, photos, kind, expected):
     reviews = []
@@ -525,7 +525,7 @@ def test_aggregate_limits_report_first_excess_source_cell(tmp_path, photos, kind
             for i in range(1, 12)
         ]
     else:
-        for i in range(1, 6):
+        for i in range(1, 11):
             name = f'extra-{i}.png'
             shutil.copyfile(photos / 'p1' / 'main.png', photos / 'p1' / name)
             images.append(image_for('p1', name))

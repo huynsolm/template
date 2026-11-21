@@ -1,0 +1,2 @@
+<h2>상품 사진</h2>
+<div class="photo-grid">{% for item in section['items'] %}<img src="{{ item.image }}" alt="{{ item.get('alt', product.name) }}">{% endfor %}</div>

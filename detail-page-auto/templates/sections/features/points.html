@@ -1,0 +1,12 @@
+<h2>상품 특징</h2>
+<div class="points {{ variant }}">
+  {% for item in section['items'] %}
+  <article class="point">
+    <div class="point-copy">
+      <span class="point-number">{{ '%02d' | format(loop.index) }}</span>
+      <h3>{{ item.title }}</h3><p>{{ item.desc }}</p>
+    </div>
+    {% if item.get('image') %}<img src="{{ item.image }}" alt="{{ item.title }}">{% endif %}
+  </article>
+  {% endfor %}
+</div>

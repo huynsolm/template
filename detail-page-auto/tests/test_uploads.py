@@ -25,7 +25,7 @@ def test_upload_rejects_bad_images(tmp_path,case):
     files=[('a.png',png())]
     if case=='disguise': files=[('image.png',b'not an image')]
     if case=='bytes': files=[('a.png',png()+b'0'*(10*1024*1024))]
-    if case=='count': files=files*6
+    if case=='count': files=files*11
     if case=='pixels':
         data=io.BytesIO(); Image.new('1',(5000,4001)).save(data,format='PNG'); files=[('big.png',data.getvalue())]
     with pytest.raises(ValueError): stage_uploads(files,tmp_path)
