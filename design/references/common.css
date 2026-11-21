@@ -1,0 +1,6 @@
+@import url('../../detail-page-auto/assets/font-library/pretendard/fonts.css');
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:860px;background:#fff;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:anywhere}
+img{display:block;max-width:100%}
+.ph{display:flex;align-items:center;justify-content:center;color:rgba(0,0,0,.35);font:500 18px Pretendard;letter-spacing:.5px;text-align:center;line-height:1.6}
+.sample{font:500 13px Pretendard;color:#999;text-align:center;padding:18px;background:#f4f4f4}

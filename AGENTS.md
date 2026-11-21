@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## 현재 작업
-`CODEX_TASK_M5.md`를 구현한다. M5-A(테마) → M5-B(플랫폼 프로필) → M5-C(일괄 생성) → M5-D(참고 자료) 순서로 하나씩 진행하고 작업별로 커밋·푸시한다. M1~M4·M3는 커밋 `91d8054`에서 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`와 `detail-page-auto/README.md`를 읽는다. 전체 배경은 `PLAN_detail_page_automation.md`를 참고한다.
+`CODEX_TASK_M6.md`(디자인 시스템: 새 테마 4종 + 폰트 + 새 섹션)를 구현한다. M1~M5는 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`, `detail-page-auto/README.md`, `design/references/`의 시안을 읽는다. 전체 배경은 `PLAN_detail_page_automation.md`를 참고한다. 작업 전 `git fetch`로 원격 변경을 확인한다.
 
 ## 규칙
 - 유료 AI API(Anthropic/OpenAI/Google API 키·SDK)와 외부 이미지 처리 서비스를 사용하지 않는다. 문구 생성은 붙여넣기 방식(기본)과 사용자가 로그인한 공식 CLI(`claude`, `codex`, `gemini`, 선택)로만 한다.
@@ -10,7 +10,8 @@
 - 플랫폼 규격 값을 지어내지 않는다. 공식 문서로 확인한 값만 출처 URL·확인 날짜와 함께 기록하고, 확인하지 못한 값은 비워 둔다.
 - 원본 사진을 수정하지 않는다. 배경 제거 모델 파일을 저장소에 커밋하지 않는다.
 - M5-A 대비 정책: classic은 legacy(모든 브랜드 색·기존 HTML/DOM/픽셀 유지, 저대비는 BRAND_COLOR_LOW_CONTRAST 경고만), minimal/bold는 aa(글자색만 보정, 장식·브랜드 배경은 원본 유지). 작업·렌더링·ZIP에 contrast_policy·resolved_colors·contrast_adjustments를 기록한다.
-- 새 폰트를 다운로드하지 않는다. 테마 CSS에 외부 URL·`@import`를 넣지 않는다.
+- 폰트는 `detail-page-auto/assets/font-library/`(OFL, 라이선스 원문 포함)와 기존 Noto Sans CJK만 쓴다. 렌더링 중 외부에서 폰트를 받지 않는다. 새 폰트 추가는 사용자 승인과 상업 이용 가능한 라이선스 원문이 있을 때만 한다. 테마 CSS에 외부 URL·`@import`를 넣지 않는다.
+- 저장소는 공개(public)다. 사용자의 실제 상품·거래처 자료(사진, 브로슈어, 회사명)를 커밋하지 않는다. 샘플은 가상 상품과 직접 생성한 이미지만 쓴다.
 - 화면은 `127.0.0.1`에만 바인딩한다. 검증·조립·렌더링·이미지 처리·내보내기·일괄 처리 로직은 `core/`에 두고 UI에 중복 구현하지 않는다.
 - 사용자 입력·AI 답변·참고 자료를 `unsafe_allow_html=True`로 출력하지 않는다.
 - AI가 후기·별점·가격을 만들지 않는다. AI 답변의 문구를 프로그램이 임의로 자르거나 고치지 않는다. 일괄 승인 기능을 만들지 않는다.
@@ -20,4 +21,4 @@
 - 외부 명령은 `shell=False` 인자 리스트로 실행한다.
 - 외부 이미지·폰트를 다운로드해 저장소에 넣지 않는다. 테스트 이미지는 Pillow로 생성한다.
 - 테스트를 건너뛰거나 비활성화해서 통과시키지 않는다. 실제 Chromium 렌더링 테스트를 포함한다.
-- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M5.md`의 "완료 보고 형식"대로 보고한다.
+- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M6.md`의 "완료 보고 형식"대로 보고한다.
