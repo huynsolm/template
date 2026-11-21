@@ -50,3 +50,5 @@ section.image img { max-height: 640px; object-fit: cover; }
 .spec-notes { font-size: 18px; }
 .notice { background: var(--alternate); }
 .overlay .hero-copy { background: var(--dark-surface); width: 100%; }
+
+.section-label { margin-bottom: 18px; color: var(--brand-text); font: 800 16px/1.4 var(--font-body), sans-serif; letter-spacing: .18em; }

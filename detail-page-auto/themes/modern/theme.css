@@ -3,3 +3,9 @@
 .overlay .eyebrow { border-left: 5px solid var(--brand); padding-left: 12px; }
 .pain-list.cards { grid-template-columns: 1fr; }
 .numbered .point-number { font-size: 92px; }
+
+.overlay { display: flex; flex-direction: column-reverse; }
+.overlay::after { display: none; }
+.overlay > img { height: auto; max-height: none; object-fit: contain; }
+.overlay .hero-copy { background: transparent; }
+.section-label { border-left: 4px solid var(--brand); padding-left: 12px; }

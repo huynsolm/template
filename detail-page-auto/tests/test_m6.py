@@ -150,6 +150,24 @@ def test_rich_render_and_dom_contrast(tmp_path, theme, brand):
             def hex_color(css):
                 return '#' + ''.join(f'{int(channel):02x}' for channel in re.findall(r'\d+',css)[:3])
 
+            visible = page.evaluate('''() => {
+                const image = document.querySelector('.hero img').getBoundingClientRect();
+                const copy = document.querySelector('.hero-copy').getBoundingClientRect();
+                const overlap = Math.max(0, Math.min(image.right,copy.right)-Math.max(image.left,copy.left))
+                    * Math.max(0, Math.min(image.bottom,copy.bottom)-Math.max(image.top,copy.top));
+                return 1-overlap/(image.width*image.height);
+            }''')
+            assert visible >= .7
+            assert page.locator('.section-label').all_text_contents() == ['CHECK','SOLUTION','POINT','STRUCTURE','WHERE','SPEC','FAQ']
+            for count in (1,2,3,4):
+                widths = page.evaluate('''count => {
+                    const grid = document.querySelector('.photo-grid');
+                    const original = grid.firstElementChild.cloneNode(true);
+                    grid.replaceChildren(...Array.from({length:count},()=>original.cloneNode(true)));
+                    return [grid.clientWidth, ...[...grid.children].map(e=>e.getBoundingClientRect().width)];
+                }''', count)
+                expected = widths[0] if count == 1 else (widths[0]-16)/2
+                assert all(abs(width-expected)<1 for width in widths[1:])
             assert pairs
             for foreground, background, minimum in pairs:
                 assert contrast_ratio(hex_color(foreground), hex_color(background)) >= minimum, (theme,brand,foreground,background)

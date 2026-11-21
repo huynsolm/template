@@ -9,3 +9,9 @@
 .overlay::after { background: linear-gradient(var(--background) 14%, transparent 65%); }
 .overlay .hero-copy { text-align: center; }
 .hero .eyebrow { margin-inline: auto; }
+
+.overlay { display: flex; flex-direction: column-reverse; }
+.overlay::after { display: none; }
+.overlay > img { height: auto; max-height: none; object-fit: contain; }
+.overlay .hero-copy { background: transparent; }
+.section-label { letter-spacing: .24em; }
