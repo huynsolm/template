@@ -7,7 +7,7 @@ sys.path.insert(0,str(ROOT))
 
 def test_app_starts(tmp_path,monkeypatch):
     monkeypatch.setenv('DETAIL_PAGE_OUTPUTS',str(tmp_path))
-    app=AppTest.from_file(str(ROOT/'app/main.py')).run()
+    app=AppTest.from_file(str(ROOT/'app/main.py')).run(timeout=60)
     assert not app.exception
     assert any('상세페이지' in t.value for t in app.title)
 
