@@ -97,6 +97,12 @@ NEW_THEMES = THEME_IDS[3:]
 @pytest.mark.parametrize('brand', ['#ffff00','#10211b','#777777'])
 def test_rich_render_and_dom_contrast(tmp_path, theme, brand):
     document = assembled('-rich')
+    stats = next(section for section in document.sections if section.type == 'stats')
+    for item in stats.items:
+        item.value = '400~800W'
+    spec = next(section for section in document.sections if section.type == 'spec')
+    spec.spec_table.columns = ['No.', '규격', '전압', '출력', '길이', '수량', '비고']
+    spec.spec_table.rows = [['1', 'Ø8 × 1000', '220V', '400~800W', '1000mm', '7', '표준'] for _ in range(7)]
     assert document.schema_version == '1.1'
     assert [s.type for s in document.sections] == [
         'hero','stats','pain','solution','image','features','structure','targets','gallery','how_to','spec','faq','notice']
@@ -168,6 +174,11 @@ def test_rich_render_and_dom_contrast(tmp_path, theme, brand):
                 }''', count)
                 expected = widths[0] if count == 1 else (widths[0]-16)/2
                 assert all(abs(width-expected)<1 for width in widths[1:])
+            assert page.locator('.stat-list dd').evaluate_all("(es)=>es.every(e=>getComputedStyle(e).whiteSpace==='nowrap')")
+            assert page.locator('.spec-panel td').evaluate_all("(es)=>es.every(e=>getComputedStyle(e).whiteSpace==='nowrap' && e.scrollWidth<=e.clientWidth)")
+            assert page.locator('.spec-panel table').evaluate("(e)=>e.getBoundingClientRect().right<=860")
+            if theme == 'modern':
+                assert page.locator('.hero').evaluate("(e)=>getComputedStyle(e).paddingBottom==='0px'")
             assert pairs
             for foreground, background, minimum in pairs:
                 assert contrast_ratio(hex_color(foreground), hex_color(background)) >= minimum, (theme,brand,foreground,background)

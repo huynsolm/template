@@ -129,3 +129,20 @@ def personal_data_warnings(references):
                     'text': match.group(0),
                 })
     return findings
+
+
+def repetition_reviews(document):
+    """Flag matching copy spans across distinct sections, preserving the text."""
+    reviews = []
+    units = list(_copy_units(document))
+    for index, (section_id, path, text) in enumerate(units):
+        for other_id, other_path, other_text in units[:index]:
+            if section_id == other_id:
+                continue
+            for match in similarity_matches(text, other_text, min_length=20):
+                reviews.append({
+                    'section_id': section_id, 'field_path': path,
+                    'reason': '서로 다른 섹션의 문구 반복', 'fact_ids': [],
+                    'detail': {**match, 'other_section_id': other_id, 'other_field_path': other_path},
+                })
+    return reviews

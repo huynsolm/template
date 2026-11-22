@@ -5,11 +5,11 @@ from pathlib import Path
 from .copy_schema import CopyDraft
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='copy_v1'
+VERSION='copy_v3'
 
 
 def prompt_version(facts):
-    return 'copy_v2' if facts.references else VERSION
+    return 'copy_v4' if facts.references else VERSION
 
 def data_block(name, value):
     # Escape XML delimiters inside untrusted facts, retaining JSON semantics.

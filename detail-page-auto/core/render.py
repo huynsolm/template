@@ -135,6 +135,8 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
             shutil.copytree(ROOT / 'assets/fonts', assets / 'fonts')
             if document.schema_version == '1.1':
                 css += '\n' + (ROOT / 'templates/rich.css').read_text(encoding='utf-8')
+        if document.schema_version == '1.1':
+            shutil.copyfile(ROOT/'templates/fit-stats.js', assets/'fit-stats.js')
         (assets / 'theme.css').write_text(css, encoding='utf-8')
         mapping = {}
         for index, (name, source) in enumerate(images.items()):

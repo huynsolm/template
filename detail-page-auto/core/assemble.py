@@ -95,7 +95,8 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
         review=[item for item in review if item['section_id'] not in locked]
     rich = any(s['type'] in ('stats', 'targets', 'structure', 'gallery', 'image') or 'spec_table' in s for s in sections)
     document=Document.model_validate({'schema_version':'1.1' if rich else '1.0','product':facts.product.model_dump(),'sections':sections})
-    from .similarity import reference_reviews
+    from .similarity import reference_reviews, repetition_reviews
     review+=reference_reviews(facts,document)
+    review+=repetition_reviews(document)
     return document,review
 

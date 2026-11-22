@@ -144,8 +144,9 @@ def reassess_draft(job: Path, document: Document | None = None, evidence=None) -
         if not ids: flag('근거 fact_ids가 비어 있음')
         if (re.search(r'\d|[%％]',text) or any(term in text for term in terms)) and not any(fact_map[i].kind in ('claim','spec') for i in ids if i in fact_map):
             flag('수치·인증·효능 표현에 claim/spec 근거 확인 필요')
-    from .similarity import reference_reviews
+    from .similarity import reference_reviews, repetition_reviews
     review+=reference_reviews(facts,document)
+    review+=repetition_reviews(document)
     manifest=read_json(job/'manifest.json')
     styles=theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))
     return review+manifest.get('image_reviews',[])+styles['contrast_reviews']

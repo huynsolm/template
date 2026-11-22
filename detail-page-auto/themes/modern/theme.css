@@ -9,3 +9,6 @@
 .overlay > img { height: auto; max-height: none; object-fit: contain; }
 .overlay .hero-copy { background: transparent; }
 .section-label { border-left: 4px solid var(--brand); padding-left: 12px; }
+
+.hero:has(.hero-stage > img:last-child) { padding-bottom: 0; }
+.hero:has(.overlay) { padding-bottom: 0; }
