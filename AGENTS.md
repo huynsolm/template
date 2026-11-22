@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## 현재 작업
-`CODEX_TASK_M6.md`(디자인 시스템: 새 테마 4종 + 폰트 + 새 섹션)를 구현한다. M1~M5는 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`, `detail-page-auto/README.md`, `design/references/`의 시안을 읽는다. 전체 배경은 `PLAN_detail_page_automation.md`를 참고한다. 작업 전 `git fetch`로 원격 변경을 확인한다.
+`CODEX_TASK_M7.md`(입력 도우미: 자료→입력 변환, 사진 자르기, 입력 완성도 점검, 수치·비교 주장 확인)를 구현한다. M1~M6는 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`와 `detail-page-auto/README.md`를 읽는다. 작업 전 `git fetch`로 원격 변경을 확인한다.
 
 ## 규칙
 - 유료 AI API(Anthropic/OpenAI/Google API 키·SDK)와 외부 이미지 처리 서비스를 사용하지 않는다. 문구 생성은 붙여넣기 방식(기본)과 사용자가 로그인한 공식 CLI(`claude`, `codex`, `gemini`, 선택)로만 한다.
@@ -21,4 +21,4 @@
 - 외부 명령은 `shell=False` 인자 리스트로 실행한다.
 - 외부 이미지·폰트를 다운로드해 저장소에 넣지 않는다. 테스트 이미지는 Pillow로 생성한다.
 - 테스트를 건너뛰거나 비활성화해서 통과시키지 않는다. 실제 Chromium 렌더링 테스트를 포함한다.
-- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M6.md`의 "완료 보고 형식"대로 보고한다.
+- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M7.md`의 "완료 보고 형식"대로 보고한다.
