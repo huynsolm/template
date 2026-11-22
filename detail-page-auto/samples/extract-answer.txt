@@ -1,0 +1,135 @@
+{
+  "facts": [
+    {
+      "id": "voltage",
+      "text": "사용 전압: AC 220V",
+      "kind": "spec"
+    },
+    {
+      "id": "width",
+      "text": "외함 폭: 320 mm",
+      "kind": "spec"
+    },
+    {
+      "id": "mass",
+      "text": "본체 무게: 2.4 kg",
+      "kind": "spec"
+    },
+    {
+      "id": "modules",
+      "text": "내부 구획: 3개",
+      "kind": "spec"
+    },
+    {
+      "id": "design",
+      "text": "전면 표시부와 분리된 구획을 갖춘 가상 설비",
+      "kind": "feature"
+    },
+    {
+      "id": "usage",
+      "text": "설치 전에 외함 폭과 배치 공간을 확인하는 가상 사용 시나리오",
+      "kind": "usage"
+    },
+    {
+      "id": "case",
+      "kind": "feature",
+      "text": "구획을 둘러싼 케이스"
+    },
+    {
+      "id": "display",
+      "kind": "feature",
+      "text": "정면에 상태 표시부가 있다"
+    }
+  ],
+  "highlights": [
+    {
+      "value": "AC 220V",
+      "label": "사용 전압",
+      "fact_id": "voltage"
+    },
+    {
+      "value": "320 mm",
+      "label": "외함 폭",
+      "fact_id": "width"
+    },
+    {
+      "value": "2.4 kg",
+      "label": "본체 무게",
+      "fact_id": "mass"
+    },
+    {
+      "value": "3개",
+      "label": "내부 구획",
+      "fact_id": "modules"
+    }
+  ],
+  "targets": [
+    "소형 작업실",
+    "공용 설비실",
+    "오피스텔 관리 공간",
+    "전시용 모형"
+  ],
+  "structure": [
+    {
+      "name": "전면 표시부",
+      "desc": "상태를 확인하는 전면 영역"
+    },
+    {
+      "name": "내부 구획",
+      "desc": "구조도에서 세 영역으로 나뉜 부분"
+    },
+    {
+      "name": "외함",
+      "desc": "모듈을 둘러싸는 케이스"
+    }
+  ],
+  "spec_table": {
+    "columns": [
+      "항목",
+      "예시 사양",
+      "구분"
+    ],
+    "rows": [
+      [
+        "사용 전압",
+        "AC 220V",
+        "가상 사양"
+      ],
+      [
+        "외함 폭",
+        "320 mm",
+        "가상 사양"
+      ],
+      [
+        "본체 무게",
+        "2.4 kg",
+        "가상 사양"
+      ],
+      [
+        "내부 구획",
+        "3개",
+        "가상 사양"
+      ]
+    ],
+    "notes": [
+      "가상 사양이며 실제 제품의 전기·설치 지침으로 사용할 수 없습니다."
+    ]
+  },
+  "notice": "렌더링 테스트용 가상 상품이며 판매하지 않습니다.",
+  "product": {
+    "name": "가상 모듈형 환기함",
+    "category": "공간 환기 설비"
+  },
+  "claims": [
+    {
+      "text": "반영구적 사용"
+    },
+    {
+      "text": "가상 시험에서 효율 99%",
+      "evidence": "가상 시험 기록 DEMO-A"
+    }
+  ],
+  "uncertain": [
+    "자료에 가격이 없어 판매자 입력 필요"
+  ]
+}

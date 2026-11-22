@@ -23,7 +23,15 @@ _profile_bytes[24:36]=struct.pack('>6H',2020,1,1,0,0,0)
 SRGB_PROFILE=bytes(_profile_bytes)
 
 
+class Crop(Model):
+    left: float = Field(default=0.0, ge=0, le=0.45, allow_inf_nan=False)
+    top: float = Field(default=0.0, ge=0, le=0.45, allow_inf_nan=False)
+    right: float = Field(default=0.0, ge=0, le=0.45, allow_inf_nan=False)
+    bottom: float = Field(default=0.0, ge=0, le=0.45, allow_inf_nan=False)
+
+
 class Processing(Model):
+    crop: Crop = Field(default_factory=Crop)
     auto_orient: bool = True
     resize: bool = True
     remove_background: bool = False
@@ -52,11 +60,27 @@ def validate_source(source: Path) -> Path:
     return collect_images(document, source.parent)[source.name]
 
 
+def crop_box(size: tuple[int, int], crop: Crop) -> tuple[int, int, int, int]:
+    width, height = size
+    box = (round(width*crop.left), round(height*crop.top),
+           width-round(width*crop.right), height-round(height*crop.bottom))
+    if box[2]-box[0] < 200 or box[3]-box[1] < 200:
+        raise ValueError('자른 뒤 사진의 폭과 높이는 각각 200px 이상이어야 합니다.')
+    return box
+
+
+def preview_crop(source: Path, processing: dict) -> Image.Image:
+    settings = Processing.model_validate(processing).model_copy(update={'resize':False,'remove_background':False})
+    return _normalize(validate_source(source),settings)
+
+
 def _normalize(source: Path, settings: Processing) -> Image.Image:
     with Image.open(source) as original:
         original.load()
         profile = original.info.get('icc_profile')
         image = ImageOps.exif_transpose(original) if settings.auto_orient else original.copy()
+        if any(settings.crop.model_dump().values()):
+            image = image.crop(crop_box(image.size, settings.crop))
         alpha = image.convert('RGBA').getchannel('A') if image.mode in ('RGBA','LA') or 'transparency' in image.info else None
         if profile:
             try:
@@ -136,7 +160,7 @@ def process_image(source: Path, job: Path, processing: Processing | dict, brand_
     source=validate_source(source)
     provider=RemBgRemover.cache_key if settings.remove_background and remover is None else (None if remover is None else getattr(remover,'cache_key',f'{type(remover).__module__}.{type(remover).__qualname__}'))
     identity={'source_sha256':_digest(source),'settings':settings.model_dump(),'brand_color':brand_color.lower(),
-              'tool_versions':{'pipeline':'3','pillow':PILLOW_VERSION,'rembg':_version('rembg') if settings.remove_background else None},'provider':provider}
+              'tool_versions':{'pipeline':'4','pillow':PILLOW_VERSION,'rembg':_version('rembg') if settings.remove_background else None},'provider':provider}
     key=hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest()
     folder=Path(job)/'images'/'derived'/key
     folder.mkdir(parents=True,exist_ok=True)
@@ -178,7 +202,7 @@ def process_image(source: Path, job: Path, processing: Processing | dict, brand_
         if removed: names += [preview,selected,f'{key[:16]}-foreground.png']
         data={**identity,'identity':identity,'normalized':normalized,'selected':selected,'mask_preview':preview,
               'background_removed':removed,'dimensions':list(image.size),
-              'steps':(['auto_orient'] if settings.auto_orient else [])+['convert_srgb','strip_private_metadata']+(['resize_without_upscaling'] if settings.resize else [])+(['background_remove','placement'] if removed else []),
+              'steps':(['auto_orient'] if settings.auto_orient else [])+(['crop'] if any(settings.crop.model_dump().values()) else [])+['convert_srgb','strip_private_metadata']+(['resize_without_upscaling'] if settings.resize else [])+(['background_remove','placement'] if removed else []),
               'reviews':reviews,'cacheable':not settings.remove_background or removed,
               'files':{name:_digest(folder/name) for name in names}}
         (folder/'metadata.json').write_text(json.dumps(data,ensure_ascii=False,indent=2))

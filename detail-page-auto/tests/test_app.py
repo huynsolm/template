@@ -103,6 +103,11 @@ def test_edit_restart_recheck_approve_and_zip(monkeypatch,tmp_path):
     assert restarted.button(key='accept').disabled
     for i in range(5): restarted.checkbox(key=f'check_{job.name}_{i}').check()
     restarted.run()
+    assert restarted.button(key='accept').disabled
+    for checkbox in restarted.checkbox:
+        if checkbox.key.startswith('check_claim_'):
+            checkbox.check()
+    restarted.run()
     assert not restarted.button(key='accept').disabled
     restarted.button(key='accept').click().run(timeout=60)
     assert restarted.session_state['stage']=='⑦ 다운로드'

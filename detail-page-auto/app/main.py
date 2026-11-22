@@ -59,10 +59,13 @@ def form_load(data=None,image_root=None):
     S['rich_baseline'] = copy.deepcopy(data)
     S['rich_input'] = {key:copy.deepcopy(data[key]) for key in ('highlights','targets','structure','spec_table') if key in data}
     S['rich_revision'] = revision
+    S['verified_table_digest'] = json.dumps(data.get('spec_table'),ensure_ascii=False,sort_keys=True)
     S['fact_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data['facts'])]
     S['review_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data.get('reviews',[]))]
     S['reference_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data.get('references',[]))]
     S['reference_names_text']=', '.join(data.get('reference_names',[]))
+    S['input_metadata'] = {key:copy.deepcopy(data[key]) for key in
+                           ('pending_claims','uncertain','price_candidate','spec_from_import','spec_verified') if key in data}
     S['notice']=data.get('notice','')
     S['image_refs']=copy.deepcopy(data.get('images',[]))
     S['image_root']=str(image_root) if image_root else ''
@@ -190,6 +193,7 @@ def facts_data():
     if names: data['reference_names']=names
     if S.get('notice','').strip(): data['notice']=S['notice']
     data.update(S.get('rich_input', {}))
+    data.update(S.get('input_metadata', {}))
     S['form_buffer']=copy.deepcopy(data)
     return data
 
@@ -260,15 +264,21 @@ def input_page():
         S['rich_revision'] = uuid.uuid4().hex[:8]
     if 'notice' not in S: S['notice']=S.get('form_buffer',{}).get('notice','')
     st.header('① 상품 정보')
+    readiness_panel = st.container()
+    from app.input_tools import extraction_panel, pending_claims_panel
+    extraction_panel(facts_data, form_load)
+    pending_claims_panel(facts_data, form_load)
     if st.button('샘플 데이터 넣기',key='sample'):
         form_load(read_json(ROOT/'samples/facts.json'),ROOT/'samples'); st.rerun()
     if st.button('상세 섹션 샘플 넣기',key='sample_rich'):
         form_load(read_json(ROOT/'samples/facts-rich.json'),ROOT/'samples'); st.rerun()
+    from core.extract import validate_form_draft
     imported=st.file_uploader('기존 facts.json 불러오기',type=['json'],key='facts_upload')
     if imported and st.button('입력 양식으로 불러오기'):
-        ok,data=perform('사실 불러오기',lambda:ProductFacts.model_validate_json(imported.getvalue()).model_dump(exclude_none=True))
+        ok,data=perform('사실 불러오기',lambda:validate_form_draft(json.loads(imported.getvalue())))
         if ok: form_load(data); S['last_error']='사진은 별도로 업로드해 주세요.'
         st.rerun()
+    st.markdown('### 기본 정보')
     st.text_input('상품명',key='product_name'); field_error('product.name')
     st.text_input('카테고리',key='product_category'); field_error('product.category')
     st.text_input('가격 (표시용)',key='product_price'); field_error('product.price')
@@ -313,7 +323,17 @@ def input_page():
     warning_names={'email':'이메일','phone':'전화번호','order_number':'주문번호'}
     for finding in personal_data_warnings(S['reference_rows']):
         st.warning(f"{warning_names[finding['kind']]} 형태가 있습니다: {finding['reference_label'] or finding['reference_id']} · 저장 전에 확인하고 지워 주세요.")
+    st.markdown('### 상세 섹션 입력')
     rich_inputs()
+    if S.get('input_metadata',{}).get('spec_from_import'):
+        table_digest = json.dumps(S['rich_input'].get('spec_table'),ensure_ascii=False,sort_keys=True)
+        if S.get('verified_table_digest') != table_digest:
+            S['input_metadata']['spec_verified'] = False
+            S['verified_table_digest'] = table_digest
+            S.pop('spec_verified_'+S['rich_revision'],None)
+        verified = st.checkbox('원본 자료와 대조했습니다',value=S['input_metadata'].get('spec_verified',False),
+                               key='spec_verified_'+S['rich_revision'])
+        S['input_metadata']['spec_verified'] = verified
     st.subheader('사진')
     st.file_uploader('상품 사진 (PNG/JPEG, 최대 10장, 장당 10MB)',type=['png','jpg','jpeg'],accept_multiple_files=True,key='photos',on_change=uploaded)
     if S.get('upload_error'): st.error(S['upload_error'])
@@ -330,6 +350,8 @@ def input_page():
         from core.images import Processing
         settings=Processing.model_validate(ref.get('processing',{})).model_dump()
         settings['remove_background']=st.checkbox(f'사진 {i+1} 배경 제거 (선택)',value=bool(settings['remove_background'] and bg_ready),disabled=not bg_ready,key=f'bg_{S["image_root"]}_{i}') and bg_ready
+        from app.input_tools import crop_panel
+        settings = crop_panel(ref, path, settings, i)
         ref['processing']=settings
     if S['image_refs'] and st.button('사진 처리 미리보기',key='photo_preview',disabled=S.get('busy',False)):
         def preview_photos():
@@ -352,10 +374,19 @@ def input_page():
             field_error(f'reviews.{index}')
             st.button('후기 삭제',key=f'delete_review_{uid}',on_click=remove_row,args=('review',index))
     st.button('후기 추가',on_click=add_row,args=('review',))
+    st.markdown('### 안내 문구')
     st.text_area('배송·교환·반품 안내 (선택)',key='notice'); field_error('notice')
     data=facts_data()
+    from core.readiness import check_readiness
+    findings = check_readiness(data,Path(S.get('image_root') or '.'),{})
+    from app.input_tools import readiness_results
+    with readiness_panel:
+        readiness_results(findings)
+    required = any(item['level']=='필수' for item in findings)
     st.download_button('facts.json 내보내기',data=json.dumps(data,ensure_ascii=False,indent=2),file_name='facts.json',mime='application/json')
-    if st.button('저장하고 프롬프트 만들기',key='create',type='primary',disabled=S.get('busy',False)):
+    if data.get('spec_from_import') and not data.get('spec_verified'):
+        st.warning('가져온 사양표를 원본 자료와 대조해 주세요.')
+    if st.button('저장하고 프롬프트 만들기',key='create',type='primary',disabled=required or S.get('busy',False)):
         def create():
             facts=ProductFacts.model_validate(data)
             if not S['image_root']: raise ValueError('상품 사진을 업로드해 주세요.')
@@ -601,7 +632,10 @@ def approval_page(job):
     st.header('⑥ 승인')
     manifest = read_json(job/'manifest.json')
     theme = manifest.get('theme','classic')
-    context = (str(job), theme, manifest.get('brand_color'))
+    from core.claims import claim_items
+    numeric_items = claim_items(job)
+    context = (str(job), theme, manifest.get('brand_color'),
+               (job/'draft.json').read_bytes(),tuple(item['id'] for item in numeric_items))
     if S.get('approval_context')!=context:
         for key in list(S):
             if key.startswith('check_'): del S[key]
@@ -609,8 +643,26 @@ def approval_page(job):
     st.caption('선택한 테마: '+theme)
     labels=['사실 일치 확인','후기 출처·허가 확인','효능·수치·광고 표현 확인','대상 플랫폼 업로드 규격은 별도 확인 필요함을 인지','상품 사진의 형태·색상이 실제와 다르게 바뀌지 않았는지 확인']
     checks=[st.checkbox(label,key=f'check_{job.name}_{i}') for i,label in enumerate(labels)]
+    st.subheader('수치·비교 표현 확인')
+    confirmations = []
+    for item in numeric_items:
+        with st.container(border=True):
+            st.write(item['text'])
+            st.caption('표현: '+', '.join(item['expressions']))
+            for fact in item['facts']:
+                st.write(fact['id']+' · '+fact['text'])
+                st.caption('근거: '+str(fact.get('evidence') or '등록된 근거 없음'))
+            if not item['has_evidence']:
+                st.warning('연결된 사실의 근거가 부족합니다. 원본 자료와 근거를 확인하세요.')
+            for reason in item['review_reasons']:
+                st.caption('기존 검수: '+reason)
+            checked = st.checkbox('이 수치·비교 표현과 근거를 확인했습니다',
+                                  key=f'check_claim_{job.name}_{item["id"]}')
+            checks.append(checked)
+            if checked:
+                confirmations.append(item['id'])
     if st.button('모두 확인했으며 승인',key='accept',type='primary',disabled=not all(checks) or S.get('busy',False)):
-        ok,accepted=perform('승인 결과 렌더링',lambda:accept_job(job))
+        ok,accepted=perform('승인 결과 렌더링',lambda:accept_job(job,claim_confirmations=confirmations))
         if ok:
             schedule_open(accepted,6)
         else: st.rerun()

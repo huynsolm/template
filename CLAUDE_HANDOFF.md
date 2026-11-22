@@ -13,6 +13,18 @@
 
 여러 작업자가 같은 브랜치에 동시에 커밋해 충돌·중복 작업이 생긴 적이 있다. 작업 전 반드시 `git fetch` 후 원격 상태를 확인하고, 이미 반영된 수정을 다시 하지 않는다.
 
+## M7 입력 도우미
+
+- 구현 순서는 자료 가져오기 → 사진 자르기 → 입력 완성도 → 승인 전 표현 확인이다. 가상 자료 `samples/extract-answer.txt`와 Pillow 브로슈어만 사용한다.
+- `core/extract.py`의 `FactsDraft`, `extraction_prompt`, `ingest_facts`, `apply_import`, `promote_claim`, `validate_form_draft`를 UI와 CLI가 공유한다. 가져오기 오류는 수정 프롬프트를 반환하고, 적용 전 미리보기를 거친다. 가격 후보는 확인 전 가격에 넣지 않는다. 빈 칸 병합은 기존 사실·숫자 띠를 보존하고 관계없는 사실 ID에 근거를 붙이지 않는다.
+- `ProductFacts`의 선택 메타데이터는 `pending_claims`, `uncertain`, `price_candidate`, `spec_from_import`, `spec_verified`다. `ImageRef.document_confirmed`는 문서형 경고 해제 기록이다. 옛 작업은 기본값으로 열린다.
+- `Processing.crop`는 left/top/right/bottom 비율 0~0.45다. 처리 순서는 방향 → crop → sRGB → resize → 선택 배경 제거다. 자를 때만 남는 영역 200px 최소 크기를 적용한다. 이미지 파이프라인 캐시 버전은 4다.
+- `core/readiness.py:check_readiness(facts, images, settings)`는 원시 입력 dict와 ProductFacts를 받고, images는 원본 사진 폴더다. 필수는 생성 불가, 권장·참고는 안내다. UI는 입력 위 점검 패널을, CLI prompt는 같은 검사와 비정상 종료를 사용한다.
+- `core/claims.py:claim_items`는 최종 문구와 연결 사실·근거를 표현별 ID로 묶는다. UI는 기존 5개 확인과 표현별 확인을 모두 요구한다. `accept_job(..., claim_confirmations=...)`는 같은 문서로 검사하며 승인 작업·렌더링 manifest의 `claim_checks`에 기록한다. CLI의 명시적 accept와 ingest/generate `--accept-review`도 같은 기록을 남긴다.
+- 입력 UI 보조는 `app/input_tools.py`, 가상 시나리오는 `tools/m7_scenario.py`다. README 캡처는 `tools/make_screenshots.py --m7-only`로만 생성한다.
+
+- M7 최종 검증은 `detail-page-auto/.venv/bin/python -m pytest -q`로 436 passed, 0 failed, 0 skipped였다. Linux·Chromium 156, 2026-11-22 기준이며 실행 중 추적 파일 변경이 없었다. 가상 시나리오는 사실 9개·숫자 띠 4개·사양표 4행·보관 주장 1개를 가져와 실제 렌더링했다. 프롬프트 전문은 `detail-page-auto/docs/extract-prompt.md`, 캡처는 `detail-page-auto/docs/images/m7-{before,after,detail,input}.png`다.
+
 ## M6 디자인 시스템
 
 - 새 단일 작업은 `modern`이 기본이다. `natural`, `impact`, `industrial`과 기존 `classic`, `minimal`, `bold`를 선택할 수 있다. 테마 기록이 없는 작업은 `classic`으로 연다. 기존 M1의 기본 스타일과 일괄 시트의 빈 테마 기본값도 `classic`이다.

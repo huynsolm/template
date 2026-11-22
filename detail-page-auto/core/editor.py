@@ -67,11 +67,11 @@ def _edited_evidence(job):
     return read_json(path) if path.exists() else {}
 
 
-def evidence_units(job: Path, document_data=None) -> list[dict]:
+def evidence_units(job: Path, document_data=None, original_copy=None) -> list[dict]:
     """Current evidence selections; canonical keys also disambiguate repeated types."""
     job=Path(job)
     document=Document.model_validate(document_data if document_data is not None else read_json(job/'draft.json'))
-    original=read_json(provenance_path(job,'copy.json'))
+    original=original_copy if original_copy is not None else read_json(provenance_path(job,'copy.json'))
     preserved=read_json(job/'locked-evidence.json') if (job/'locked-evidence.json').exists() else {}
     edited=_edited_evidence(job)
     result=[]

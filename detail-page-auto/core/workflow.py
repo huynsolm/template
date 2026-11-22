@@ -134,10 +134,17 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         write_json(stage/'review.json',review)
         manifest.update(contrast_metadata(styles))
         needs_review=bool(review)
+        if accept_review:
+            from .claims import claim_items, confirmed_claims
+            manifest['claim_checks'] = confirmed_claims(claim_items(job,document=document,original_copy=parsed,review_items=review,seller=facts))
         if render_output:
             if needs_review:
                 print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 cli.py accept --job '+str(job)+' 로 승인하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
-            render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme,brand_color=brand)
+            rendered_bundle=render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme,brand_color=brand)
+            if accept_review:
+                rendered_meta = read_json(rendered_bundle/'manifest.json')
+                rendered_meta['claim_checks'] = manifest['claim_checks']
+                write_json(rendered_bundle/'manifest.json',rendered_meta)
         for path in stage.iterdir(): path.replace(job/path.name)
         stage.rmdir()
         write_json(job/'attempts'/f'errors-{attempt}.json',[])
@@ -154,7 +161,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         raise ValueError('; '.join(e['field_path']+': '+e['reason'] for e in errors)) from exc
 
 
-def accept_job(source: Path, theme=None, brand_color=None):
+def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=None):
     """Validate the current manual draft and publish an independent accepted job."""
     from .collect import collect_images
     source=Path(source).resolve(strict=True)
@@ -165,6 +172,8 @@ def accept_job(source: Path, theme=None, brand_color=None):
     review=reassess_draft(source,document)
     seller=ProductFacts.model_validate(read_json(provenance_path(source,'facts.json')))
     images.update(seller.validate_images(source))
+    from .claims import claim_items, confirmed_claims, DEFAULT_CLAIM_TERMS
+    claim_checks = confirmed_claims(claim_items(source,document=document,seller=seller),claim_confirmations)
     original_manifest=read_json(source/'manifest.json')
     from .themes import theme_styles, contrast_metadata
     theme=theme if theme is not None else original_manifest.get('theme','classic')
@@ -201,7 +210,7 @@ def accept_job(source: Path, theme=None, brand_color=None):
         snapshot_bundle(rendered,draft_bytes,review)
         accepted_at=now()
         rendered_manifest=read_json(rendered/'manifest.json')
-        rendered_manifest.update(source_job=str(source),accepted_at=accepted_at)
+        rendered_manifest.update(source_job=str(source),accepted_at=accepted_at,claim_checks=claim_checks)
         write_json(rendered/'manifest.json',rendered_manifest)
         write_json(staging/'manifest.json',{
             'theme':theme,
@@ -209,6 +218,8 @@ def accept_job(source: Path, theme=None, brand_color=None):
             **contrast_metadata(rendered_manifest),
             'image_processing':original_manifest.get('image_processing',[]),
             'image_reviews':original_manifest.get('image_reviews',[]),
+            'claim_checks':claim_checks,
+            'claim_terms':original_manifest.get('claim_terms',list(dict.fromkeys([*DEFAULT_CLAIM_TERMS,*original_manifest.get('review_terms',[])]))),
             'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),
             'review_terms':original_manifest.get('review_terms',list(DEFAULT_TERMS)),
             'prompt_version':original_manifest.get('prompt_version'),

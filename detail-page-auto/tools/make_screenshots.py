@@ -140,13 +140,86 @@ def make_theme_screenshots(images: Path, artifacts: Path):
     return results
 
 
+def make_m7_screenshots(images: Path, output: Path):
+    from core.extract import extraction_prompt
+    from PIL import Image
+    from tools.m7_scenario import run_scenario
+    from core.workflow import read_json
+    images.mkdir(parents=True,exist_ok=True)
+    (images.parent/'extract-prompt.md').write_text(extraction_prompt(),encoding='utf-8')
+    scenario = run_scenario(output)
+    for name, source in [('m7-before',scenario['source']),('m7-after',scenario['cropped'])]:
+        with Image.open(source) as photo:
+            photo.save(images/(name+'.png'))
+    meta = read_json(scenario['bundle']/'manifest.json')
+    top = Image.new('RGB',(860,min(1800,meta['height'])))
+    for part in meta['pages']:
+        if part['top'] >= top.height:
+            break
+        with Image.open(scenario['bundle']/part.get('png',part['file'])) as photo:
+            top.paste(photo,(0,part['top']))
+    top.save(images/'m7-detail.png')
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1',0))
+        port = listener.getsockname()[1]
+    environment = {**os.environ,'DETAIL_PAGE_OUTPUTS':str(output/'jobs')}
+    with (output/'m7-server.log').open('w') as log:
+        process = subprocess.Popen([sys.executable,'-m','streamlit','run','app/main.py','--server.address','127.0.0.1',
+                                    '--server.port',str(port),'--browser.gatherUsageStats','false'],
+                                   cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,shell=False)
+        try:
+            deadline = time.monotonic()+30
+            while True:
+                try:
+                    urllib.request.urlopen(f'http://127.0.0.1:{port}/_stcore/health',timeout=1).close()
+                    break
+                except OSError:
+                    if process.poll() is not None or time.monotonic()>deadline:
+                        raise RuntimeError('Streamlit startup failed')
+                    time.sleep(.1)
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(executable_path=chromium_path(pw.chromium.executable_path))
+                try:
+                    page = browser.new_page(viewport={'width':1440,'height':1100})
+                    page.set_default_timeout(60000)
+                    page.goto(f'http://127.0.0.1:{port}')
+                    expect(page.get_by_role('heading',name='① 상품 정보',exact=True)).to_be_visible(timeout=60000)
+                    page.locator('input[type=file]').nth(1).set_input_files(scenario['source'])
+                    page.get_by_text('자료에서 입력 만들기',exact=True).click()
+                    page.get_by_role('textbox',name='정리 답변 붙여넣기',exact=True).fill((ROOT/'samples/extract-answer.txt').read_text())
+                    page.get_by_role('button',name='가져오기',exact=True).click()
+                    page.get_by_role('button',name='미리보기 값을 입력에 적용',exact=True).click()
+                    expect(page.get_by_role('textbox',name='상품명',exact=True)).to_have_value('가상 모듈형 환기함',timeout=60000)
+                    page.get_by_role('textbox',name='가격 (표시용)',exact=True).fill('가상 판매자 입력 가격')
+                    page.get_by_role('textbox',name='가격 (표시용)',exact=True).press('Tab')
+                    expect(page.get_by_role('heading',name='입력 점검 결과',exact=True)).to_be_visible(timeout=60000)
+                    page.get_by_role('heading',name='① 상품 정보',exact=True).scroll_into_view_if_needed()
+                    page.screenshot(path=str(images/'m7-input.png'),full_page=True)
+                finally:
+                    browser.close()
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
+    return {'summary':scenario['summary'],'images':[str(images/name) for name in
+            ('m7-before.png','m7-after.png','m7-detail.png','m7-input.png')]}
+
+
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description='샘플 화면 캡처를 명시적으로 갱신합니다. pytest에서는 임시 경로만 사용합니다.')
     parser.add_argument('--images',type=Path,default=ROOT/'docs/images')
     parser.add_argument('--output',type=Path,default=ROOT/'outputs/m4-browser')
     parser.add_argument('--themes-only',action='store_true',help='테마 7종의 상세페이지 상단 캡처만 생성')
+    parser.add_argument('--m7-only',action='store_true',help='가상 브로슈어 입력 도우미 캡처')
     args=parser.parse_args()
+    if args.m7_only:
+        print(json.dumps(make_m7_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
+        sys.exit(0)
     if args.themes_only:
         print(json.dumps(make_theme_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
         sys.exit(0)

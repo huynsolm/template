@@ -6,6 +6,11 @@ from .schema import Model, Product, ReviewItem, Text, Body, Document, Highlight,
 from .collect import collect_images
 from .images import Processing
 
+class PendingClaim(Model):
+    text: Text = Field(max_length=500)
+    evidence: Text | None = None
+
+
 class Fact(Model):
     id: Text
     text: Annotated[Text, Field(max_length=500)]
@@ -24,6 +29,7 @@ class ImageRef(Model):
     alt: Text | None = None
     processing: Processing = Field(default_factory=Processing)
     derived_path: Text | None = None
+    document_confirmed: bool = False
 
     @property
     def effective_path(self) -> str:
@@ -45,6 +51,12 @@ class ProductFacts(Model):
     notice: Body | None = None
     references: list[Reference] = Field(default_factory=list)
     reference_names: list[Annotated[Text, Field(max_length=100)]] = Field(default_factory=list)
+
+    pending_claims: list[PendingClaim] = Field(default_factory=list)
+    uncertain: list[Text] = Field(default_factory=list)
+    price_candidate: str | None = None
+    spec_from_import: bool = False
+    spec_verified: bool = False
 
     highlights: list[Highlight] = Field(default_factory=list, max_length=4)
     targets: list[Title] = Field(default_factory=list, max_length=12)

@@ -2,7 +2,7 @@
 import re
 from .schema import Document
 
-DEFAULT_TERMS=('인증','효능','효과','치료','예방','완치','개선','최고','최상','유일','우수')
+DEFAULT_TERMS=('인증','효능','효과','치료','예방','완치','개선','최고','최상','유일','우수','대비','보다','최초','반영구','위험 없음','화재 없음')
 
 
 def seller_sections(facts):

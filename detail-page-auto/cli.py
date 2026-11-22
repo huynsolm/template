@@ -88,6 +88,14 @@ def main(argv=None):
         else:
             parser=argparse.ArgumentParser(description='M2: 상품 사실 → 붙여넣기 프롬프트 → 문구 검증. M1: --input ...')
             sub=parser.add_subparsers(dest='command',required=True)
+            extract=sub.add_parser('extract',help='자료 정리 프롬프트와 붙여넣기 가져오기')
+            exsub=extract.add_subparsers(dest='extract_command',required=True)
+            ex=exsub.add_parser('prompt')
+            ex.add_argument('--output',type=Path,required=True)
+            ex=exsub.add_parser('ingest')
+            ex.add_argument('--answer',type=Path,required=True)
+            ex.add_argument('--output',type=Path,required=True)
+            ex.add_argument('--merge',type=Path)
             batch=sub.add_parser('batch',help='시트(XLSX/CSV)로 여러 상품 일괄 처리 (일괄 승인 없음)')
             bsub=batch.add_subparsers(dest='batch_command',required=True)
             b=bsub.add_parser('template',help='빈 상품 목록 XLSX 템플릿 만들기'); b.add_argument('--output',type=Path,required=True)
@@ -153,7 +161,26 @@ def main(argv=None):
                 terms=json.loads(args.review_terms.read_text(encoding='utf-8'))
                 if not isinstance(terms,list) or not all(isinstance(t,str) and t for t in terms):
                     raise ValueError('review-terms must be a JSON array of nonempty strings')
-            if args.command=='batch':
+            if args.command=='extract':
+                from core.extract import extraction_prompt, ingest_facts, apply_import
+                if args.extract_command=='prompt':
+                    args.output.mkdir(parents=True,exist_ok=True)
+                    result=args.output/'extract-prompt.md'
+                    result.write_text(extraction_prompt(),encoding='utf-8')
+                else:
+                    outcome=ingest_facts(args.answer.read_text(encoding='utf-8'))
+                    args.output.parent.mkdir(parents=True,exist_ok=True)
+                    if not outcome['ok']:
+                        fix=args.output.parent/'fix-extract-prompt.md'
+                        fix.write_text(outcome['fix_prompt'],encoding='utf-8')
+                        raise ValueError('자료 형식을 확인하세요. 수정 요청: '+str(fix))
+                    current=json.loads(args.merge.read_text(encoding='utf-8')) if args.merge else {}
+                    data=apply_import(current,outcome,mode='empty' if args.merge else 'replace')
+                    args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+                    for warning in outcome['warnings']: print('WARNING: '+warning,file=sys.stderr)
+                    print('가져온 값은 원본과 대조하세요. 가격 후보는 확인 후 입력하세요.',file=sys.stderr)
+                    result=args.output
+            elif args.command=='batch':
                 result=run_batch(args)
             elif args.command=='images':
                 result=create_job(read_facts(args.facts),args.images,args.output,method='images')
@@ -183,7 +210,14 @@ def main(argv=None):
                 else:
                     if args.regenerate: parser.error('--regenerate requires --from-job')
                     if not args.images or not args.output: parser.error('--facts requires --images and --output')
-                    result=create_job(read_facts(args.facts),args.images,args.output,max_attempts=args.max_attempts)
+                    from core.readiness import check_readiness
+                    raw=json.loads(args.facts.read_text(encoding='utf-8'))
+                    findings=check_readiness(raw,args.images,{})
+                    for item in findings:
+                        print(f"{item['level']}: {item['field']} · {item['message']}",file=sys.stderr)
+                    if any(item['level']=='필수' for item in findings):
+                        raise ValueError('필수 입력을 보완한 뒤 프롬프트를 만드세요.')
+                    result=create_job(ProductFacts.model_validate(raw),args.images,args.output,max_attempts=args.max_attempts)
             elif args.command=='ingest':
                 from core.providers import PasteProvider
                 answer=PasteProvider(args.answer).generate('')
