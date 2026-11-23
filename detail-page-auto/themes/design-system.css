@@ -31,7 +31,7 @@ img { display: block; width: 100%; max-width: 100%; object-fit: contain; }
 .pain-list.cards li { background: var(--background); border-radius: var(--radius); }
 .stats { background: var(--brand); color: var(--on-brand); }
 .stat-list { text-align: center; }
-.stat-list dd { font-family: var(--font-display, var(--font-heading)), sans-serif; }
+.stat-list dd { font-family: var(--font-display, var(--font-heading)), sans-serif; --fit-min: 22; }
 .stat-list dt { margin-bottom: 0; }
 .solution img { margin-top: 35px; max-height: 500px; border-radius: var(--radius); }
 .points { display: grid; gap: 42px; }

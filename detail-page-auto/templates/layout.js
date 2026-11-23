@@ -9,7 +9,7 @@
     var rects = range.getClientRects();
     for (var i = 0; i < rects.length; i++) {
       var r = rects[i];
-      if (r.width <= 0 || r.height <= 0) continue;
+      if (r.height <= 0) continue;  // an empty pre-wrap line has a zero-width box
       if (!tops.some(function (t) { return Math.abs(t - r.top) < r.height / 2; })) tops.push(r.top);
     }
     return tops.length;

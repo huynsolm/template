@@ -30,7 +30,7 @@ MEASURE_SPEC = {
     'features': [('h3', 'items.{i}.title', 'head'), ('h3 + p', 'items.{i}.desc', 'support')],
     'how_to': [('li h3', 'steps.{i}.title', 'head'), ('li h3 + p', 'steps.{i}.desc', 'support')],
     'faq': [('h3', 'items.{i}.q', 'head'), ('h3 + p', 'items.{i}.a', 'faq_answer')],
-    'stats': [('dd', 'items.{i}.value', 'item')],
+    'stats': [('dt', 'items.{i}.label', 'item'), ('dd', 'items.{i}.value', 'item')],
     'targets': [('li', 'items.{i}', 'item')],
     'structure': [('dt', 'items.{i}.name', 'item'), ('dd', 'items.{i}.desc', 'item')],
 }

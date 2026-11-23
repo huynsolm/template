@@ -9,6 +9,7 @@ import tempfile
 import zipfile
 
 from .assemble import DEFAULT_TERMS, seller_sections
+from .measure import MEASURE_VERSION
 from .facts import ProductFacts
 from .schema import Document
 from .workflow import now, read_json, write_json
@@ -205,6 +206,8 @@ def save_draft(job: Path, data: dict, locked_sections: list[str], evidence=None)
     manifest.update(contrast_metadata(theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))))
     manifest.update(updated_at=now(),needs_review=bool(review),review_accepted=False)
     write_json(job/'manifest.json',manifest)
+    # The preview no longer matches the saved text. measured.json keeps pointing at it, so ④ can
+    # still show the old line counts, marked as needing a new preview.
     if (job/'preview.json').exists(): (job/'preview.json').unlink()
 
 
@@ -239,6 +242,7 @@ def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     write_json(job/'review.json',review)
     write_json(job/'manifest.json',manifest)
     write_json(job/'preview.json',{'bundle':str(bundle.relative_to(job))})
+    write_json(job/'measured.json',{'bundle':str(bundle.relative_to(job))})
     return bundle
 
 
@@ -253,9 +257,13 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
         fallback = json.loads(draft)['product']['brand_color']
         if effective_brand(snapshot,fallback).lower() != effective_brand(current,fallback).lower():
             return False
+        theme = load_theme(current.get('theme','classic'))
+        # M8-A themes must have been measured by the current rules (older previews are rendered again).
+        if theme.type is not None and snapshot.get('copy_measure_version') != MEASURE_VERSION:
+            return False
         return (snapshot.get('draft_sha256')==digest
                 and snapshot.get('theme','classic')==current.get('theme','classic')
-                and snapshot.get('contrast_policy')==load_theme(current.get('theme','classic')).contrast_policy)
+                and snapshot.get('contrast_policy')==theme.contrast_policy)
     except (OSError,ValueError,KeyError):
         return False
 
@@ -263,15 +271,27 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
 COPY_CODES = ('COPY_TOO_LONG', 'LIST_TOO_MANY', 'SECTION_TOO_DENSE')
 
 
+def latest_measurement(job: Path) -> dict:
+    """The last measured preview, kept after the text is saved again.
+
+    Returns ``metrics``, ``fresh`` (the snapshot matches the current saved text, theme and colour)
+    and ``draft`` (the text that was measured), so the editor can tell which badges are out of date."""
+    job = Path(job)
+    for pointer in ('preview.json', 'measured.json'):
+        try:
+            bundle = job / read_json(job/pointer)['bundle']
+            manifest = read_json(bundle/'manifest.json')
+            draft = read_json(bundle/'draft.json')
+        except (OSError, ValueError, KeyError):
+            continue
+        return {'metrics': manifest.get('copy_metrics', []), 'fresh': bundle_matches(job, bundle), 'draft': draft}
+    return {'metrics': [], 'fresh': False, 'draft': None}
+
+
 def latest_copy_metrics(job: Path) -> tuple[list[dict], bool]:
     """Measurements from the last preview snapshot and whether they match the current text."""
-    job = Path(job)
-    try:
-        bundle = job / read_json(job/'preview.json')['bundle']
-        metrics = read_json(bundle/'manifest.json').get('copy_metrics', [])
-    except (OSError, ValueError, KeyError):
-        return [], False
-    return metrics, bundle_matches(job, bundle)
+    state = latest_measurement(job)
+    return state['metrics'], state['fresh']
 
 
 def copy_overflow_reviews(job: Path) -> list[dict]:

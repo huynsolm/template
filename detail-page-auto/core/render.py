@@ -171,7 +171,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         # The bundled JSON references bundled images, so it can be rerun with --images JOB.
         (job / 'input.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         families = [font.family for font in fonts.values()] or ['DetailKorean']
-        from .measure import measure_spec, annotate, copy_reviews
+        from .measure import measure_spec, annotate, copy_reviews, MEASURE_VERSION
         spec = None if thumbnail else measure_spec()
         full, geometry = (capture(job / 'page.html', max_height, families, top_only=thumbnail, measure=spec)
                           if fonts or thumbnail else capture(job / 'page.html', max_height, measure=spec))
@@ -213,7 +213,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                     'fonts': [{'id':font.id, 'family':font.family} for font in fonts.values()] or [{'id':'noto-sans-cjk','family':'DetailKorean'}], 'width': 860, 'height': full.height, 'max_height': max_height,
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'copy_metrics': metrics, 'copy_reviews': reviews_copy,
-                    'copy_rules_enforced': enforce_copy_rules,
+                    'copy_rules_enforced': enforce_copy_rules, 'copy_measure_version': MEASURE_VERSION,
                     **({} if enforce_copy_rules else {'copy_reviews_informational': measured}),
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],

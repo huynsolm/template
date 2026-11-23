@@ -8,7 +8,11 @@ shortened; excess becomes a review item that says where and by how much.
 from .copy_rules import (DENSE_SECTION_LINES, LINE_LIMITS, LIST_FIELD, LIST_LIMITS, MEASURE_SPEC,
                          ROLE_NAMES)
 
+# Sections filled from the seller's product information (①), not from the AI answer.
 SELLER_SECTIONS = ('stats', 'targets', 'structure')
+# Bump when the measurement or the alignment/fitting it depends on changes, so older
+# previews of the M8-A themes are rendered again instead of reused.
+MEASURE_VERSION = 'm8a-2'
 
 
 def subject(word: str) -> str:
@@ -23,7 +27,8 @@ MEASURE_JS = r'''spec => {
     range.selectNodeContents(element);
     const tops = [];
     for (const r of range.getClientRects()) {
-      if (r.width <= 0 || r.height <= 0) continue;
+      // Zero-width boxes are kept: an empty line in pre-wrap text is still a line.
+      if (r.height <= 0) continue;
       if (!tops.some(t => Math.abs(t - r.top) < r.height / 2)) tops.push(r.top);
     }
     return tops.length;
@@ -68,33 +73,44 @@ def target_chars(chars: int, lines: int, limit: int) -> int:
     return max(1, chars * limit // max(lines, 1))
 
 
+def source_of(section_type: str) -> str:
+    return 'seller' if section_type in SELLER_SECTIONS else 'ai'
+
+
+SELLER_HINT = ' 판매자 입력이므로 ① 상품 정보에서 고치고 새 작업을 시작하세요.'
+
+
 def copy_reviews(metrics: list[dict], document=None, dense_limit: int = DENSE_SECTION_LINES) -> list[dict]:
-    """COPY_TOO_LONG / SECTION_TOO_DENSE from measurements, LIST_TOO_MANY from the document."""
+    """COPY_TOO_LONG / SECTION_TOO_DENSE from measurements, LIST_TOO_MANY from the document.
+
+    ``detail.source`` says who can fix it: ``ai`` (the copy answer, ④ or a rewrite request) or
+    ``seller`` (product information entered in ①)."""
     reviews = []
     for m in metrics:
         if not m['over']:
             continue
+        source = source_of(m['section_type'])
         target = target_chars(m['chars'], m['lines'], m['limit'])
         reviews.append({
             'section_id': m['section_id'], 'field_path': m['field_path'], 'code': 'COPY_TOO_LONG',
             'severity': 'warning', 'fact_ids': [],
             'reason': f"{subject(ROLE_NAMES[m['role']])} {m['lines']}줄입니다(허용 {m['limit']}줄). "
-                      f"약 {target}자 이하로 줄이기를 권장합니다.",
+                      f"약 {target}자 이하로 줄이기를 권장합니다." + (SELLER_HINT if source == 'seller' else ''),
             'detail': {'role': m['role'], 'lines': m['lines'], 'limit': m['limit'], 'chars': m['chars'],
-                       'target_chars': target, 'text': m['text']},
+                       'target_chars': target, 'text': m['text'], 'source': source},
         })
     totals = {}
     for m in metrics:
-        if m['section_type'] in SELLER_SECTIONS:
-            continue
         totals.setdefault(m['section_id'], [m['section_type'], 0])[1] += m['lines']
     for section_id, (kind, lines) in totals.items():
         if lines > dense_limit:
+            source = source_of(kind)
             reviews.append({
                 'section_id': section_id, 'field_path': kind, 'code': 'SECTION_TOO_DENSE',
                 'severity': 'warning', 'fact_ids': [],
-                'reason': f'섹션 문구가 모두 {lines}줄입니다(권장 {dense_limit}줄 이하). 한 섹션에는 핵심 메시지 하나만 남기세요.',
-                'detail': {'lines': lines, 'limit': dense_limit},
+                'reason': f'섹션 문구가 모두 {lines}줄입니다(권장 {dense_limit}줄 이하). 한 섹션에는 핵심 메시지 하나만 남기세요.'
+                          + (SELLER_HINT if source == 'seller' else ''),
+                'detail': {'lines': lines, 'limit': dense_limit, 'source': source},
             })
     if document is not None:
         for section in document.sections:
@@ -107,6 +123,6 @@ def copy_reviews(metrics: list[dict], document=None, dense_limit: int = DENSE_SE
                     'section_id': section.id, 'field_path': LIST_FIELD[section.type], 'code': 'LIST_TOO_MANY',
                     'severity': 'warning', 'fact_ids': [],
                     'reason': f'항목이 {count}개입니다(권장 {maximum}개 이하). 덜 중요한 항목을 빼세요.',
-                    'detail': {'count': count, 'limit': maximum},
+                    'detail': {'count': count, 'limit': maximum, 'source': 'ai'},
                 })
     return reviews

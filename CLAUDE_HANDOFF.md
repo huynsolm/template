@@ -95,6 +95,13 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
 - 화면 ④: 미리보기 측정 결과 배지, 초과 요약·링크, "초과한 문구만 다시 쓰기 요청" 버튼. 측정은 마지막 미리보기 스냅샷 기준(`editor.latest_copy_metrics`).
 - `industrial`의 고객 고민 카드는 1열로 바꿨다(2열에서는 보통 길이 항목도 줄바꿈되어 1줄 규칙과 맞지 않음). `impact` 포스터 배지 글자 18 → 22px.
 - 샘플 `samples/answer-rich-long.txt`(일부러 긴 가상 답변), 테스트 `tests/test_m8a.py`, 캡처 `tools/make_screenshots.py --m8a-only` → `docs/images/m8a-long-*.png`.
+- 검수(`M8_A_REVIEW.md`, 조건부) 반영: Important 1~7과 Minor 9 수정, 회귀 테스트 `tests/test_m8a_review.py`. 재검수 요청은 `CODEX_REVIEW_M8A_FIX.md`.
+  - 측정 버전 `measure.MEASURE_VERSION`을 manifest `copy_measure_version`에 기록. 새 테마는 버전이 다른(또는 없는) 미리보기를 `bundle_matches`에서 재사용하지 않는다. 측정·정렬·숫자 띠 맞춤을 바꾸면 버전을 올린다.
+  - 판매자 섹션(stats·targets·structure)도 섹션 합계 검사에 포함하고, 검수 항목 `detail.source`가 `seller`면 ①에서 고치라고 안내한다. `overflow_regenerate_job`은 AI 섹션만 요청하고, 없으면 작업을 만들지 않는다. 섹션 합계·목록 초과 항목에는 `current`(현재 문구)와 `fields`(칸별 줄 수)를 함께 보낸다.
+  - `save_draft` 후에도 `measured.json`이 마지막 측정 스냅샷을 가리킨다(`editor.latest_measurement`). ④는 저장 전 편집·저장 후 모두 "지난 미리보기 기준 … 다시 미리보기 필요"로 표시한다.
+  - 줄 수는 폭 0인 줄 박스도 센다(pre-wrap 빈 줄). `layout.js`도 같다.
+  - `fit-stats.js`는 CSS 변수 `--fit-min`(새 테마 22)보다 작게 줄이지 않고, 넘치면 줄을 바꿔 측정·검수되게 한다. 기존 테마는 변수가 없어 동작이 같다. 숫자 띠 라벨(`items.{i}.label`)도 1줄로 측정.
+  - 미결정(사용자 확인 필요): natural 대표 제목 굵기 700 예외 여부, 자동 정렬 범위(현재 5종), 지시서 4.1의 data 속성을 선택자 측정으로 공식 대체할지.
 
 ## 제품과 현재 흐름
 

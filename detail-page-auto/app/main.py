@@ -16,7 +16,7 @@ from pydantic import ValidationError
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from core.facts import ProductFacts
-from core.workflow import create_job,ingest_job,regenerate_job,overflow_regenerate_job,generate_job,accept_job,read_json
+from core.workflow import create_job,ingest_job,regenerate_job,overflow_regenerate_job,generate_job,accept_job,read_json,COPY_SECTION_TYPES
 from core.uploads import stage_uploads
 from core.themes import THEME_IDS, effective_brand, load_theme
 from core.editor import bundle_matches
@@ -481,15 +481,19 @@ def editor_snapshot(job,document,units,choices):
 
 
 def edit_page(job):
-    from core.editor import save_draft,evidence_units,change_copy_items,latest_copy_metrics,COPY_CODES
+    from core.editor import save_draft,evidence_units,change_copy_items,latest_measurement,COPY_CODES
     st.header('④ 검수·문구 수정')
     document=read_json(job/'draft.json')
     reviews=read_json(job/'review.json')
-    metrics,fresh=latest_copy_metrics(job)
-    metric_map={(m['section_id'],m['field_path']):m for m in metrics} if fresh else {}
+    state=latest_measurement(job)
+    metrics,fresh=state['metrics'],state['fresh']
+    metric_map={(m['section_id'],m['field_path']):m for m in metrics}
+    measured_sections={s['id']:s for s in (state['draft'] or {}).get('sections',[])}
     overflow=[item for item in reviews if item.get('code') in COPY_CODES]
+    kinds={s['id']:s['type'] for s in document['sections']}
+    ai_overflow=[item for item in overflow if kinds.get(item['section_id']) in COPY_SECTION_TYPES]
     if metrics and not fresh:
-        st.info('문구·테마·브랜드 색이 바뀌었습니다. ⑤에서 다시 미리보기하면 줄 수를 다시 잽니다.')
+        st.info('지난 미리보기 뒤에 문구·테마·브랜드 색이 바뀌었습니다. 아래 줄 수는 지난 미리보기 기준입니다. ⑤에서 다시 미리보기해야 줄 수를 다시 잽니다.')
     elif not metrics:
         st.caption('⑤ 미리보기를 만들면 문구마다 실제 줄 수가 표시됩니다 (1 섹션 1 메시지 점검).')
     if overflow:
@@ -520,7 +524,12 @@ def edit_page(job):
                 value=st.text_area(f'{NAMES[kind]} · {path} (상한 {limit}자)',value=initial,key=edit_key(job,sid,path))
                 st.caption(f'{len(value)} / {limit}자')
                 measured=metric_map.get((sid,path))
-                if measured and measured['over']:
+                try: was=nested(measured_sections[sid],path)
+                except (KeyError,IndexError,ValueError,TypeError): was=None
+                if measured and (not fresh or value!=was):
+                    step='문구를 고쳤으니 저장 후 ⑤에서 다시 미리보기 필요' if value!=was else '⑤에서 다시 미리보기 필요'
+                    st.caption(f"지난 미리보기 기준 {measured['lines']}줄 / 허용 {measured['limit']}줄 · {step}")
+                elif measured and measured['over']:
                     from core.measure import target_chars
                     st.warning(f"{measured['lines']}줄 / 허용 {measured['limit']}줄 · 약 {target_chars(measured['chars'],measured['lines'],measured['limit'])}자 이하로 줄이기 권장")
                 elif measured:
@@ -555,8 +564,10 @@ def edit_page(job):
             S['bundle']=''; S['last_error']=''; S['saved_message']='수정과 검수 목록을 저장했습니다.'
         st.rerun()
     if S.get('saved_message'): st.success(S['saved_message'])
-    if st.button('초과한 문구만 다시 쓰기 요청',key='overflow_rewrite',disabled=S.get('busy',False) or not overflow,
-                 help='줄 수를 넘은 섹션만 다시 쓰도록 요청하는 프롬프트를 만듭니다. 나머지 섹션은 잠긴 채 그대로 유지됩니다.'):
+    if overflow and not ai_overflow:
+        st.caption('초과한 내용이 모두 판매자 입력(숫자 띠·적용 대상·구성)입니다. ① 상품 정보에서 고치고 새 작업을 시작하세요.')
+    if st.button('초과한 문구만 다시 쓰기 요청',key='overflow_rewrite',disabled=S.get('busy',False) or not ai_overflow,
+                 help='AI가 쓴 섹션 중 줄 수를 넘은 섹션만 다시 쓰도록 요청하는 프롬프트를 만듭니다. 나머지 섹션은 잠긴 채 그대로 유지됩니다.'):
         ok,new=perform('초과 문구 다시 쓰기 프롬프트 만들기',lambda:overflow_regenerate_job(job))
         if ok: schedule_open(new,1)
         else: st.rerun()
