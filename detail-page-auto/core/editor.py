@@ -243,7 +243,30 @@ def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     write_json(job/'manifest.json',manifest)
     write_json(job/'preview.json',{'bundle':str(bundle.relative_to(job))})
     write_json(job/'measured.json',{'bundle':str(bundle.relative_to(job))})
+    # An approval that no longer matches (e.g. rendered by older measurement rules) is not kept as approved.
+    if manifest.get('rendered_job') and not bundle_matches(job, job/manifest['rendered_job']):
+        manifest.update(review_accepted=False)
+        manifest.pop('rendered_job',None)
+        write_json(job/'manifest.json',manifest)
     return bundle
+
+
+def resume_bundle(job: Path) -> Path | None:
+    """The snapshot to show when a job is reopened: the approved render, else the preview,
+    each only if it still matches the current text, theme and rules."""
+    job=Path(job)
+    try:
+        manifest=read_json(job/'manifest.json')
+    except (OSError,ValueError):
+        return None
+    candidates=[]
+    if manifest.get('review_accepted') and manifest.get('rendered_job'):
+        candidates.append(job/manifest['rendered_job'])
+    try:
+        candidates.append(job/read_json(job/'preview.json')['bundle'])
+    except (OSError,ValueError,KeyError):
+        pass
+    return next((b for b in candidates if b.is_dir() and bundle_matches(job,b)),None)
 
 
 def bundle_matches(job: Path, bundle: Path) -> bool:

@@ -185,10 +185,14 @@ def test_dom_type_scale_spacing_and_fonts(tmp_path, theme):
     assert 64 <= r['h1'] <= 82 and 40 <= r['h2'] <= 52
     assert r['h2'] * 0.5 <= r['sub'] <= r['h2'] * 0.6 and r['sub'] >= 22
     assert r['body'] >= 22
+    # Headings are 800 or heavier, except faces whose heaviest bundled weight is lower
+    # (user decision 2026-11-24): Black Han Sans 400 (impact), Gowun Batang 700 (natural).
     if theme == 'impact':
-        assert 'Black Han Sans' in r['h1Family']  # single-weight display face
+        assert 'Black Han Sans' in r['h1Family'] and r['h1Weight'] == 400
+    elif theme == 'natural':
+        assert 'Gowun Batang' in r['h1Family'] and r['h1Weight'] == r['h2Weight'] == 700
     else:
-        assert r['h1Weight'] >= 700 and r['h2Weight'] >= 700
+        assert r['h1Weight'] >= 800 and r['h2Weight'] >= 800
     assert len(r['families']) <= 2, r['families']
     assert r['minLeft'] >= 40 and r['maxRight'] <= 820, (r['minLeft'], r['maxRight'])
     assert not r['overflow']

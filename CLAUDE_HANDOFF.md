@@ -101,7 +101,8 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - `save_draft` 후에도 `measured.json`이 마지막 측정 스냅샷을 가리킨다(`editor.latest_measurement`). ④는 저장 전 편집·저장 후 모두 "지난 미리보기 기준 … 다시 미리보기 필요"로 표시한다.
   - 줄 수는 폭 0인 줄 박스도 센다(pre-wrap 빈 줄). `layout.js`도 같다.
   - `fit-stats.js`는 CSS 변수 `--fit-min`(새 테마 22)보다 작게 줄이지 않고, 넘치면 줄을 바꿔 측정·검수되게 한다. 기존 테마는 변수가 없어 동작이 같다. 숫자 띠 라벨(`items.{i}.label`)도 1줄로 측정.
-  - 미결정(사용자 확인 필요): natural 대표 제목 굵기 700 예외 여부, 자동 정렬 범위(현재 5종), 지시서 4.1의 data 속성을 선택자 측정으로 공식 대체할지.
+  - 재검수(`M8_A_REVIEW_2.md`, 조건부): #1~#7·#9 해결. 새 Minor R2-1(이전 규칙으로 승인된 작업을 다시 열면 최신 미리보기를 못 찾음) 수정 — `editor.resume_bundle`이 승인 결과 → 미리보기 순으로 현재 규칙에 맞는 것을 고르고, `preview_job`은 맞지 않는 이전 승인을 해제한다.
+  - 사용자 결정(2026-11-24, `CODEX_TASK_M8A.md`에 기록): 제목 굵기 800 이상, 단 글꼴 최대 굵기가 낮으면 그 값(natural 고운바탕 700, impact 검은고딕 400 — `themes.required_heading_weight`). 자동 정렬은 5종만. 측정은 data 속성 대신 `MEASURE_SPEC` 선택자.
 
 ## 제품과 현재 흐름
 

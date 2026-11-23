@@ -35,8 +35,14 @@ class Tokens(BaseModel):
     radius: StrictInt = Field(ge=0, le=100)
 
 
-# Single-weight display faces carry their heaviness in the glyphs themselves.
-SINGLE_WEIGHT_DISPLAY = ('black-han-sans',)
+# Headings are 800 or heavier. A heading face whose heaviest bundled weight is lower must use
+# that weight instead (user decision 2026-11-24): Black Han Sans is a single 400 display face,
+# Gowun Batang ships 400 and 700 only.
+HEADING_WEIGHT_CEILING = {'black-han-sans': 400, 'gowun-batang': 700}
+
+
+def required_heading_weight(font_id: str) -> int:
+    return min(800, HEADING_WEIGHT_CEILING.get(font_id, 900))
 
 
 class TypeScale(BaseModel):
@@ -105,8 +111,8 @@ def load_theme(theme_id: str) -> Theme:
         raise ValueError('theme contrast policy does not match its compatibility mode')
     if theme_id not in LEGACY_THEMES and (theme.fonts is None or set(theme.variants) != set(VARIANTS) or theme.type is None):
         raise ValueError('new theme must specify fonts, variants and type scale')
-    if theme.type and theme.type.heading_weight < 700 and theme.fonts.heading not in SINGLE_WEIGHT_DISPLAY:
-        raise ValueError('type.heading_weight must be 700 or more')
+    if theme.type and theme.type.heading_weight < required_heading_weight(theme.fonts.heading):
+        raise ValueError(f'type.heading_weight must be {required_heading_weight(theme.fonts.heading)} or more')
     unknown_align = set(theme.align) - set(ALIGNABLE)
     if unknown_align:
         raise ValueError('align may only name: ' + ', '.join(ALIGNABLE))

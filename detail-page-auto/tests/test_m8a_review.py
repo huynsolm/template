@@ -188,3 +188,33 @@ def test_stats_label_is_measured(tmp_path):
     m = metric(job, 'stats', 'items.0.label')
     assert m['limit'] == 1 and m['over'] is True
     assert ('stats-1', 'items.0.label') in {(i['section_id'], i['field_path']) for i in copy_items(job)}
+
+
+# heading weight rule: 800, or the heaviest bundled weight of the heading face
+
+def test_heading_weight_must_reach_800_or_the_faces_heaviest_weight():
+    from core.themes import required_heading_weight
+    assert required_heading_weight('pretendard') == 800
+    assert required_heading_weight('gowun-batang') == 700
+    assert required_heading_weight('black-han-sans') == 400
+
+
+# R2-1: an approval rendered by older rules gives way to the current preview
+
+def test_stale_old_approval_falls_back_to_the_current_preview(tmp_path):
+    import shutil
+    from core.editor import resume_bundle
+    job = facts_job(tmp_path)
+    first = preview_job(job)
+    old = first.with_name('job-oldaccept')
+    shutil.copytree(first, old)
+    manifest = read_json(old / 'manifest.json'); del manifest['copy_measure_version']
+    write_json(old / 'manifest.json', manifest)  # approved before the measurement version existed
+    manifest = read_json(job / 'manifest.json')
+    manifest.update(review_accepted=True, rendered_job=str(old.relative_to(job)))
+    write_json(job / 'manifest.json', manifest)
+    assert resume_bundle(job) == first  # reopening the job shows the valid preview, not nothing
+    second = preview_job(job)
+    manifest = read_json(job / 'manifest.json')
+    assert manifest['review_accepted'] is False and 'rendered_job' not in manifest
+    assert resume_bundle(job) == second and old.is_dir()

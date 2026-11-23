@@ -19,7 +19,7 @@ from core.facts import ProductFacts
 from core.workflow import create_job,ingest_job,regenerate_job,overflow_regenerate_job,generate_job,accept_job,read_json,COPY_SECTION_TYPES
 from core.uploads import stage_uploads
 from core.themes import THEME_IDS, effective_brand, load_theme
-from core.editor import bundle_matches
+from core.editor import bundle_matches,resume_bundle
 
 STEPS=['① 상품 정보','② 프롬프트','③ 답변 붙여넣기','④ 검수·수정','⑤ 미리보기','⑥ 승인','⑦ 다운로드']
 KINDS={'스펙':'spec','특징':'feature','사용법':'usage','주장':'claim','기타':'other'}
@@ -81,14 +81,8 @@ def open_job(path):
     manifest=read_json(job/'manifest.json')
     S['theme_choice']=manifest.get('theme','classic')
     S['preview_brand']=effective_brand(manifest,data['product']['brand_color'])
-    if manifest.get('review_accepted') and manifest.get('rendered_job'):
-        S['bundle']=str(job/manifest['rendered_job'])
-    elif (job/'preview.json').exists():
-        info=read_json(job/'preview.json')
-        bundle=job/info['bundle']
-        if bundle.is_dir(): S['bundle']=str(bundle)
-    if S['bundle'] and (job/'draft.json').exists():
-        if not bundle_matches(job,Path(S['bundle'])): S['bundle']=''
+    bundle=resume_bundle(job)
+    S['bundle']=str(bundle) if bundle else ''
 
 
 def error_text(exc):
