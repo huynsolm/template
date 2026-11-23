@@ -229,7 +229,7 @@ def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     brand = brand_color if brand_color is not None else previous_brand
     bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme,brand_color=brand)
     rendered=read_json(bundle/'manifest.json')
-    review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']
+    review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']+rendered.get('copy_reviews',[])
     snapshot_bundle(bundle,draft_bytes,review)
     if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
         manifest.update(review_accepted=False)
@@ -258,6 +258,24 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
                 and snapshot.get('contrast_policy')==load_theme(current.get('theme','classic')).contrast_policy)
     except (OSError,ValueError,KeyError):
         return False
+
+
+COPY_CODES = ('COPY_TOO_LONG', 'LIST_TOO_MANY', 'SECTION_TOO_DENSE')
+
+
+def latest_copy_metrics(job: Path) -> tuple[list[dict], bool]:
+    """Measurements from the last preview snapshot and whether they match the current text."""
+    job = Path(job)
+    try:
+        bundle = job / read_json(job/'preview.json')['bundle']
+        metrics = read_json(bundle/'manifest.json').get('copy_metrics', [])
+    except (OSError, ValueError, KeyError):
+        return [], False
+    return metrics, bundle_matches(job, bundle)
+
+
+def copy_overflow_reviews(job: Path) -> list[dict]:
+    return [item for item in read_json(Path(job)/'review.json') if item.get('code') in COPY_CODES]
 
 
 def gallery_thumbnail(job: Path, theme: str) -> Path:

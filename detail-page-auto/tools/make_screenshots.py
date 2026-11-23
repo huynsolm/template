@@ -208,6 +208,36 @@ def make_m7_screenshots(images: Path, output: Path):
             ('m7-before.png','m7-after.png','m7-detail.png','m7-input.png')]}
 
 
+def make_m8a_screenshots(images: Path, artifacts: Path):
+    """M8-A captures: the four M6 themes with the deliberately long sample answer (normal answer: --themes-only)."""
+    from PIL import Image
+    from core.assemble import assemble
+    from core.copy_schema import CopyDraft
+    from core.facts import ProductFacts
+    from core.ingest import extract_json
+    from core.render import render
+    from core.workflow import read_json
+    images.mkdir(parents=True,exist_ok=True)
+    artifacts.mkdir(parents=True,exist_ok=True)
+    facts = ProductFacts.model_validate_json((ROOT/'samples/facts-rich.json').read_text())
+    results={}
+    for name in ('answer-rich-long',):
+        copy = CopyDraft.model_validate(extract_json((ROOT/f'samples/{name}.txt').read_text()))
+        document, _ = assemble(facts,copy)
+        for theme in ('modern','natural','impact','industrial'):
+            bundle = render(document, ROOT/'samples', artifacts, theme=theme, png=True)
+            manifest = read_json(bundle/'manifest.json')
+            top = Image.new('RGB', (860, min(1800, manifest['height'])))
+            for part in manifest['pages']:
+                if part['top'] >= top.height:
+                    break
+                with Image.open(bundle/part['png']) as rendered:
+                    top.paste(rendered, (0, part['top']))
+            target = images/f'm8a-long-{theme}.png'
+            top.save(target)
+            results[target.name] = [(r['code'], r['section_id'], r['field_path']) for r in manifest['copy_reviews']]
+    return results
+
 
 if __name__=='__main__':
     import argparse
@@ -216,7 +246,11 @@ if __name__=='__main__':
     parser.add_argument('--output',type=Path,default=ROOT/'outputs/m4-browser')
     parser.add_argument('--themes-only',action='store_true',help='테마 7종의 상세페이지 상단 캡처만 생성')
     parser.add_argument('--m7-only',action='store_true',help='가상 브로슈어 입력 도우미 캡처')
+    parser.add_argument('--m8a-only',action='store_true',help='새 테마 4종 × 긴 샘플 답변 상단 캡처(줄 수 측정 결과 포함)')
     args=parser.parse_args()
+    if args.m8a_only:
+        print(json.dumps(make_m8a_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
+        sys.exit(0)
     if args.m7_only:
         print(json.dumps(make_m7_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
         sys.exit(0)

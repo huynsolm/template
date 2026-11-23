@@ -4,6 +4,17 @@ description = "포스터형 사진과 굵은 카드"
 contrast_policy = "aa"
 fonts = { heading = "black-han-sans", body = "pretendard" }
 
+[type]
+hero_head = 66
+head = 46
+item_head = 31
+sub = 26
+body = 24
+heading_weight = 400
+sub_weight = 500
+body_line_height = 1.65
+hero_line_height = 1.22
+
 [variants]
 hero = "poster"
 pain = "checklist"

@@ -15,3 +15,4 @@
 .overlay > img { height: auto; max-height: none; object-fit: contain; }
 .overlay .hero-copy { background: transparent; }
 .section-label { letter-spacing: .24em; }
+.pain-list.cards { grid-template-columns: 1fr; }

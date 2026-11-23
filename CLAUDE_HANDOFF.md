@@ -78,6 +78,24 @@ coupang은 값·출처·확인 날짜가 빈 `unverified` 템플릿이다. smart
 - 화면: ① "참고 자료 (선택)" 입력과 저장 전 개인정보 경고, ④ 유사 구간 표시. `source_note`의 URL에는 접속하지 않는다.
 - `samples/answer.txt`는 코드 블록이 있는 채팅 답변 형식이다. 테스트에서 읽을 때 `core.ingest.extract_json`을 쓴다.
 
+## M8 결정과 M8-A 현재 상태
+
+사용자 결정(2026-11-23): M8은 A(디자인 품질 규칙) → B(이미지 소스) → C(색 추출·PDF) 순서. A를 먼저 구현·검토하고 B·C는 별도 지시서로 만든다. 작업 방식은 **Claude가 구현하고 Codex가 검수**한다.
+- B에서 적용할 결정: AI 생성 이미지를 소스로 허용(실제 제품 사진의 배경 변경이 기본, 완전 생성 이미지는 분위기·개념 그림만, 이미지별 생성 여부 기록, 승인 시 제품 형태·색상·구성 일치 확인). 이미지 프롬프트는 복사·붙여넣기.
+- C에서 적용할 결정: PDF는 글자 보존과 캔바 편집 가능 여부를 각각 검증.
+
+M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3종은 HTML·픽셀을 바꾸지 않고 측정만 manifest에 기록한다(`copy_rules_enforced: false`, `copy_reviews_informational`).
+- `core/copy_rules.py`: 역할별 줄 한도(대표 제목 2, 헤드·서브·항목 1, 보조 2, FAQ 답변 3), 목록 개수 한도, 섹션 합계 10줄, 측정 선택자(`MEASURE_SPEC`, 템플릿 수정 없이 기존·새 템플릿 공통), 프롬프트 안내(`prompt_guidance`, 글자 수 목안은 타입 스케일로 계산).
+- `core/measure.py`: 캡처와 같은 Chromium 페이지에서 줄 박스 수를 세는 `MEASURE_JS`, `copy_reviews`(코드 `COPY_TOO_LONG`·`LIST_TOO_MANY`·`SECTION_TOO_DENSE`, 목표 글자 수 포함). 문구를 자르거나 고치지 않는다.
+- `core/render.py`: `capture(measure=...)`, manifest `copy_metrics`·`copy_reviews`·`copy_rules_enforced`. 새 테마에서 초과가 있으면 needs_review → DRAFT. `preview_job`·`ingest_job`·`accept_job`이 렌더링의 `copy_reviews`를 작업 `review.json`에 합친다(`reassess_draft`는 만들지 않으므로 다음 렌더링 때 다시 계산).
+- `core/themes.py`: `TypeScale`(`[type]` 표, 대표 제목 64~82, 섹션 제목 40~52, 서브 = 섹션 제목의 50~60%(22px 하한), 본문 ≥ 22, 제목 굵기 ≥ 700 — 단일 굵기 디스플레이 글꼴 `black-han-sans`는 예외), `align`(pain·solution·features·how_to·faq, 기본 auto). CSS 변수 `--type-*`.
+- `templates/layout.js`: 새 테마에서만 포함. 글꼴 로딩 후 `data-align="auto"` 섹션을 측정해 목록·3줄 이상 본문은 왼쪽, 그 외는 가운데(`copy-align-*`). 캡처는 `data-layout-done`을 기다린다.
+- 프롬프트 `copy_v5`(참고 자료 있으면 `copy_v6`) = v3/v4 + `prompt_guidance()`. v1~v4 파일은 그대로.
+- `workflow.overflow_regenerate_job`: 넘친 섹션만 다시 쓰게 하는 새 작업(나머지 문구 섹션 잠금, 프롬프트에 `<copy_overflow>` 블록). 이전 작업은 수정하지 않는다. `regenerate_job(previous, locked_sections=...)`.
+- 화면 ④: 미리보기 측정 결과 배지, 초과 요약·링크, "초과한 문구만 다시 쓰기 요청" 버튼. 측정은 마지막 미리보기 스냅샷 기준(`editor.latest_copy_metrics`).
+- `industrial`의 고객 고민 카드는 1열로 바꿨다(2열에서는 보통 길이 항목도 줄바꿈되어 1줄 규칙과 맞지 않음). `impact` 포스터 배지 글자 18 → 22px.
+- 샘플 `samples/answer-rich-long.txt`(일부러 긴 가상 답변), 테스트 `tests/test_m8a.py`, 캡처 `tools/make_screenshots.py --m8a-only` → `docs/images/m8a-long-*.png`.
+
 ## 제품과 현재 흐름
 
 단일 사용자가 자신의 컴퓨터에서 상품 정보·사진으로 폭 860px의 상세페이지 이미지를 만드는 도구다.

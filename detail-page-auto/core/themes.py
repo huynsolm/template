@@ -3,7 +3,7 @@ import re
 import tomllib
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 THEMES_ROOT = Path(__file__).resolve().parents[1] / 'themes'
 LEGACY_THEMES = ('classic', 'minimal', 'bold')
@@ -18,6 +18,7 @@ VARIANTS = {
     'spec': ('dark', 'card', 'plain'),
 }
 COLOR = r'^#[0-9a-fA-F]{6}$'
+ALIGNABLE = ('pain', 'solution', 'features', 'how_to', 'faq')
 
 
 class Tokens(BaseModel):
@@ -32,6 +33,33 @@ class Tokens(BaseModel):
     padding_x: StrictInt = Field(ge=0, le=100)
     font_scale: float = Field(ge=0.8, le=1.5)
     radius: StrictInt = Field(ge=0, le=100)
+
+
+# Single-weight display faces carry their heaviness in the glyphs themselves.
+SINGLE_WEIGHT_DISPLAY = ('black-han-sans',)
+
+
+class TypeScale(BaseModel):
+    """M8-A type hierarchy for the M6 themes (pixels)."""
+    model_config = ConfigDict(extra='forbid')
+    hero_head: StrictInt = Field(ge=64, le=82)
+    head: StrictInt = Field(ge=40, le=52)
+    item_head: StrictInt = Field(ge=26, le=40)
+    sub: StrictInt = Field(ge=22)
+    body: StrictInt = Field(ge=22, le=30)
+    heading_weight: StrictInt = Field(ge=100, le=900)
+    sub_weight: StrictInt = Field(ge=500, le=600)
+    body_line_height: float = Field(ge=1.6, le=1.75)
+    hero_line_height: float = Field(ge=1.2, le=1.3)
+
+    @model_validator(mode='after')
+    def hierarchy(self):
+        low, high = self.head * 0.5, self.head * 0.6
+        if not (low <= self.sub <= high or (self.sub == 22 and low < 22)):
+            raise ValueError('type.sub must be 50-60% of type.head (22px minimum)')
+        if self.item_head >= self.head:
+            raise ValueError('type.item_head must be smaller than type.head')
+        return self
 
 
 class FontRoles(BaseModel):
@@ -50,6 +78,8 @@ class Theme(BaseModel):
     tokens: Tokens
     fonts: FontRoles | None = None
     variants: dict[str, str] = Field(default_factory=dict)
+    type: TypeScale | None = None
+    align: dict[str, Literal['auto', 'center', 'left']] = Field(default_factory=dict)
 
 
 def validate_css(css: str, *, allow_legacy_font=True) -> None:
@@ -73,8 +103,13 @@ def load_theme(theme_id: str) -> Theme:
     expected='legacy' if theme_id=='classic' else 'aa'
     if theme.contrast_policy!=expected:
         raise ValueError('theme contrast policy does not match its compatibility mode')
-    if theme_id not in LEGACY_THEMES and (theme.fonts is None or set(theme.variants) != set(VARIANTS)):
-        raise ValueError('new theme must specify fonts and variants')
+    if theme_id not in LEGACY_THEMES and (theme.fonts is None or set(theme.variants) != set(VARIANTS) or theme.type is None):
+        raise ValueError('new theme must specify fonts, variants and type scale')
+    if theme.type and theme.type.heading_weight < 700 and theme.fonts.heading not in SINGLE_WEIGHT_DISPLAY:
+        raise ValueError('type.heading_weight must be 700 or more')
+    unknown_align = set(theme.align) - set(ALIGNABLE)
+    if unknown_align:
+        raise ValueError('align may only name: ' + ', '.join(ALIGNABLE))
     for kind, variant in theme.variants.items():
         if variant not in VARIANTS.get(kind, ()):
             raise ValueError(f'invalid layout: {kind}/{variant}')
@@ -166,6 +201,13 @@ def theme_styles(theme_id: str, brand: str) -> dict:
         colors['dark-text'] = correct('dark-text', '#ffffff', ['#172421'])
         colors['dark-surface'] = '#172421'
     variables.update(colors)
+    if theme.type:
+        t = theme.type
+        variables.update({'type-hero-head': f'{t.hero_head}px', 'type-head': f'{t.head}px',
+                          'type-item-head': f'{t.item_head}px', 'type-sub': f'{t.sub}px',
+                          'type-body': f'{t.body}px', 'type-heading-weight': str(t.heading_weight),
+                          'type-sub-weight': str(t.sub_weight), 'type-body-line': str(t.body_line_height),
+                          'type-hero-line': str(t.hero_line_height)})
     return {'css':css,'variables':'; '.join('--'+k+': '+v for k,v in variables.items()),
             'contrast_policy':'aa','resolved_colors':colors,
             'contrast_adjustments':adjustments,'contrast_reviews':reviews,'contrast_pairs':pairs}

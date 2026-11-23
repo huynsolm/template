@@ -34,7 +34,7 @@ def chromium_path(playwright_default):
     return shutil.which('chromium')
 
 
-def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, top_only=False):
+def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, top_only=False, measure=None):
     """Load only this export's files, await assets, and return image + geometry."""
     html = Path(html).resolve()
     network = []
@@ -75,6 +75,15 @@ def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, t
                         ]);
                     } finally { clearTimeout(timer); }
                 }''', families)
+                # M8-A layout script (new themes) sets alignment after fonts load; wait for it.
+                page.evaluate('''async () => {
+                    if (!document.querySelector('script[src="assets/layout.js"]')) return;
+                    const start = Date.now();
+                    while (!document.documentElement.hasAttribute('data-layout-done')) {
+                        if (Date.now() - start > 15000) throw new Error('layout script timeout');
+                        await new Promise(resolve => setTimeout(resolve, 20));
+                    }
+                }''')
                 geometry = page.evaluate('''families => ({
                     height: Math.ceil(document.documentElement.scrollHeight),
                     horizontal_overflow: document.documentElement.scrollWidth > 860,
@@ -92,6 +101,9 @@ def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, t
                 for section in geometry['sections']:
                     if section['bottom'] - section['top'] > max_height:
                         raise ValueError(f"section {section['id']} exceeds maximum height {max_height}")
+                if measure is not None:
+                    from .measure import MEASURE_JS
+                    geometry['copy_metrics'] = page.evaluate(MEASURE_JS, measure)
                 geometry['browser_version'] = browser.version
                 geometry['network_requests'] = network
                 if top_only:
@@ -152,12 +164,17 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         data['product']['brand_color'] = brand
         data = rewrite(data)
         env = Environment(loader=FileSystemLoader(ROOT / 'templates'), autoescape=select_autoescape(['html']), undefined=StrictUndefined)
-        (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=variables, contrast_policy=styles['contrast_policy'], fonts=fonts.values(), variants=design.variants), encoding='utf-8')
+        from .themes import ALIGNABLE
+        (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=variables, contrast_policy=styles['contrast_policy'], fonts=fonts.values(), variants=design.variants, align=design.align, alignable=ALIGNABLE), encoding='utf-8')
+        if design.variants:
+            shutil.copyfile(ROOT/'templates/layout.js', assets/'layout.js')
         # The bundled JSON references bundled images, so it can be rerun with --images JOB.
         (job / 'input.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         families = [font.family for font in fonts.values()] or ['DetailKorean']
-        full, geometry = (capture(job / 'page.html', max_height, families, top_only=thumbnail)
-                          if fonts or thumbnail else capture(job / 'page.html', max_height))
+        from .measure import measure_spec, annotate, copy_reviews
+        spec = None if thumbnail else measure_spec()
+        full, geometry = (capture(job / 'page.html', max_height, families, top_only=thumbnail, measure=spec)
+                          if fonts or thumbnail else capture(job / 'page.html', max_height, measure=spec))
         if thumbnail:
             full.thumbnail((270, 570), Image.Resampling.LANCZOS)
             buffer = io.BytesIO()
@@ -166,6 +183,13 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
             return buffer.getvalue()
         if full.width != 860 or full.height != geometry['height']:
             raise ValueError('screenshot geometry mismatch')
+        metrics = annotate(geometry.get('copy_metrics', []))
+        measured = copy_reviews(metrics, document)
+        # M8-A rules apply to the M6 themes. Legacy themes only report measurements,
+        # so their review state, file names and pixels stay as before.
+        enforce_copy_rules = design.type is not None
+        reviews_copy = measured if enforce_copy_rules else []
+        needs_review = bool(needs_review or reviews_copy)
         cuts = [0]
         for section in geometry['sections']:
             if section['bottom'] - cuts[-1] > max_height:
@@ -188,11 +212,14 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         manifest = {'theme': theme, **contrast_metadata(styles), 'needs_review': bool(needs_review), 'review_accepted': bool(accept_review), 'schema_version': document.schema_version, 'brand_color': brand,
                     'fonts': [{'id':font.id, 'family':font.family} for font in fonts.values()] or [{'id':'noto-sans-cjk','family':'DetailKorean'}], 'width': 860, 'height': full.height, 'max_height': max_height,
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
+                    'copy_metrics': metrics, 'copy_reviews': reviews_copy,
+                    'copy_rules_enforced': enforce_copy_rules,
+                    **({} if enforce_copy_rules else {'copy_reviews_informational': measured}),
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],
                                  **{name: version(name) for name in ['pydantic', 'jinja2', 'playwright', 'pillow']}},
                     'elapsed_seconds': round(time.perf_counter()-started, 3)}
-        (job / 'review.json').write_text(json.dumps(styles['contrast_reviews'], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        (job / 'review.json').write_text(json.dumps(styles['contrast_reviews'] + reviews_copy, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         (job / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         final = job.with_name('job-' + job.name.removeprefix('.pending-'))
         job.rename(final)

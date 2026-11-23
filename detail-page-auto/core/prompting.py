@@ -5,11 +5,12 @@ from pathlib import Path
 from .copy_schema import CopyDraft
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='copy_v3'
+VERSION='copy_v5'
+GUIDED_VERSIONS=('copy_v5','copy_v6')
 
 
 def prompt_version(facts):
-    return 'copy_v4' if facts.references else VERSION
+    return 'copy_v6' if facts.references else VERSION
 
 def data_block(name, value):
     # Escape XML delimiters inside untrusted facts, retaining JSON semantics.
@@ -24,6 +25,9 @@ def make_prompt(facts, locked=None):
     data={'facts':[f.model_dump(exclude_none=True) for f in facts.facts]}
     schema=json.dumps(CopyDraft.model_json_schema(),ensure_ascii=False,indent=2)
     example=(ROOT/'samples/copy-example.json').read_text(encoding='utf-8')
+    if version in GUIDED_VERSIONS:
+        from .copy_rules import prompt_guidance
+        template+='\n'+prompt_guidance()+'\n'
     result=template+'\n'+data_block('facts',data)
     if facts.references:
         references={

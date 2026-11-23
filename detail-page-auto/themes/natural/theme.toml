@@ -4,6 +4,19 @@ description = "아치 사진과 명조 제목"
 contrast_policy = "aa"
 fonts = { heading = "gowun-batang", body = "pretendard" }
 
+align = { pain = "center", features = "center" }
+
+[type]
+hero_head = 66
+head = 46
+item_head = 31
+sub = 26
+body = 24
+heading_weight = 700
+sub_weight = 500
+body_line_height = 1.65
+hero_line_height = 1.22
+
 [variants]
 hero = "arch"
 pain = "lines"
