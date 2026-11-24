@@ -49,6 +49,10 @@ def prepare_images(facts: ProductFacts, job: Path, cache_dir: Path | None = None
         record={**result.metadata,'source_path':image.path,'normalized_path':relative(result.normalized_path),
                 'selected_path':image.derived_path,'mask_preview_path':relative(result.mask_preview_path),
                 'file_paths':[relative(result.normalized_path.parent/name) for name in result.metadata['files']]}
+        if image.source is not None:
+            from .image_checks import provenance_record, provenance_reviews
+            record.update(provenance_record(stored,index,job))
+            reviews+=provenance_reviews(stored,index,record)
         metadata.append(record)
         for item in result.reviews:
             reviews.append({'section_id':'images','field_path':f'images.{index}',
@@ -75,6 +79,7 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
         snapshot=facts.model_dump(exclude_none=True)
         for image in snapshot['images']:
             image['path']=mapping[image['path']]
+            if image.get('based_on'): image['based_on']=mapping[image['based_on']]
             image.pop('derived_path',None)
         stored=ProductFacts.model_validate(snapshot)
         stored,image_metadata,image_reviews=prepare_images(stored,job,output/'.image-cache')
@@ -108,6 +113,8 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
     if manifest['attempts']>=manifest['max_attempts']:
         raise ValueError('attempt limit reached; create a new job')
     facts=ProductFacts.model_validate(read_json(job/'facts.json'))
+    if accept_review and any(image.source for image in facts.images):
+        raise ValueError('AI로 만든 이미지가 있는 작업은 --accept-review로 승인할 수 없습니다. 화면 ⑥ 또는 accept --confirm-image로 이미지마다 확인하세요.')
     brand = brand_color if brand_color is not None else effective_brand(manifest, facts.product.brand_color)
     styles=theme_styles(theme,brand)
     terms=tuple(manifest.get('review_terms',DEFAULT_TERMS)) if terms is None else tuple(terms)
@@ -166,7 +173,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         raise ValueError('; '.join(e['field_path']+': '+e['reason'] for e in errors)) from exc
 
 
-def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=None):
+def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=None, image_confirmations=None):
     """Validate the current manual draft and publish an independent accepted job."""
     from .collect import collect_images
     source=Path(source).resolve(strict=True)
@@ -179,6 +186,11 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
     images.update(seller.validate_images(source))
     from .claims import claim_items, confirmed_claims, DEFAULT_CLAIM_TERMS
     claim_checks = confirmed_claims(claim_items(source,document=document,seller=seller),claim_confirmations)
+    from .image_checks import ai_image_items, confirmed_images, image_sources
+    image_checks = confirmed_images(ai_image_items(seller),image_confirmations)
+    sources = image_sources(seller)
+    # Each AI image was compared by a person; the pending-confirmation items are resolved.
+    review=[item for item in review if item.get('code')!='AI_IMAGE_UNCONFIRMED']
     original_manifest=read_json(source/'manifest.json')
     from .themes import theme_styles, contrast_metadata
     theme=theme if theme is not None else original_manifest.get('theme','classic')
@@ -219,7 +231,8 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
         snapshot_bundle(rendered,draft_bytes,review)
         accepted_at=now()
         rendered_manifest=read_json(rendered/'manifest.json')
-        rendered_manifest.update(source_job=str(source),accepted_at=accepted_at,claim_checks=claim_checks)
+        rendered_manifest.update(source_job=str(source),accepted_at=accepted_at,claim_checks=claim_checks,
+                                 image_checks=image_checks,image_sources=sources)
         write_json(rendered/'manifest.json',rendered_manifest)
         write_json(staging/'manifest.json',{
             'theme':theme,
@@ -228,6 +241,8 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
             'image_processing':original_manifest.get('image_processing',[]),
             'image_reviews':original_manifest.get('image_reviews',[]),
             'claim_checks':claim_checks,
+            'image_checks':image_checks,
+            'image_sources':sources,
             'claim_terms':original_manifest.get('claim_terms',list(dict.fromkeys([*DEFAULT_CLAIM_TERMS,*original_manifest.get('review_terms',[])]))),
             'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),
             'review_terms':original_manifest.get('review_terms',list(DEFAULT_TERMS)),

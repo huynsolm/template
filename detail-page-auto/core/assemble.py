@@ -19,13 +19,15 @@ def seller_sections(facts):
         add('structure', items=[item.model_dump() for item in facts.structure],
             **({'image': diagram.effective_path} if diagram else {}))
     lifestyle = [i for i in facts.images if i.role == 'lifestyle']
+    # Fully AI-generated pictures carry the "연출 이미지입니다" label (M8-B).
+    staged = lambda image: {'staged': True} if image.source == 'ai_generated' else {}
     if lifestyle:
-        add('image', image=lifestyle[0].effective_path)
+        add('image', image=lifestyle[0].effective_path, **staged(lifestyle[0]))
     photos = [i for i in facts.images if i.role == 'detail'] + lifestyle[1:]
     gallery = {}
     for photo in photos:
         gallery.setdefault(photo.path, {'image': photo.effective_path,
-                           **({'alt': photo.alt} if photo.alt else {})})
+                           **({'alt': photo.alt} if photo.alt else {}), **staged(photo)})
     if gallery:
         add('gallery', items=list(gallery.values()))
     if facts.reviews:

@@ -110,10 +110,12 @@ class Structure(Section):
 class ImageSection(Section):
     type: Literal['image']
     image: ImagePath
+    staged: Literal[True] | None = None  # M8-B: fully AI-generated mood picture, labelled on the page
 
 class GalleryPhoto(Model):
     image: ImagePath
     alt: Text | None = None
+    staged: Literal[True] | None = None
 
 class Gallery(Section):
     type: Literal['gallery']

@@ -1,4 +1,5 @@
 """Seller-owned facts; no generated commercial data."""
+import re
 from typing import Annotated, Literal
 from pathlib import Path
 from pydantic import Field, ValidationInfo, field_validator, model_validator
@@ -23,6 +24,12 @@ class Fact(Model):
             raise ValueError('claim requires evidence')
         return self
 
+# M8-B image origin. None (the default, omitted from JSON) is a real photo.
+AI_SOURCES = ('ai_edited', 'ai_generated')
+AI_GENERATED_ROLES = ('lifestyle',)  # fully generated images: mood/scene pictures only
+URL_LIKE = re.compile(r'(https?:|www\.|://|[/\\@])', re.I)
+
+
 class ImageRef(Model):
     path: Text
     role: Literal['hero','feature','solution','other','detail','lifestyle','diagram']
@@ -30,10 +37,37 @@ class ImageRef(Model):
     processing: Processing = Field(default_factory=Processing)
     derived_path: Text | None = None
     document_confirmed: bool = False
+    source: Literal['ai_edited','ai_generated'] | None = None
+    based_on: Text | None = None
+    generator: Annotated[Text, Field(max_length=40)] | None = None
+    edit_request: Annotated[Text, Field(max_length=300)] | None = None
 
     @property
     def effective_path(self) -> str:
         return self.derived_path or self.path
+
+    @property
+    def origin(self) -> str:
+        return self.source or 'photo'
+
+    @model_validator(mode='after')
+    def provenance(self):
+        if self.source is None:
+            if self.based_on or self.generator or self.edit_request:
+                raise ValueError('실제 사진에는 원본·생성 도구·요청 내용을 적지 않습니다.')
+            return self
+        if not self.generator:
+            raise ValueError('AI로 만든 이미지는 사용한 도구 이름(예: ChatGPT, Gemini)을 적어 주세요.')
+        if URL_LIKE.search(self.generator):
+            raise ValueError('생성 도구에는 이름만 적어 주세요(주소·계정 정보 불가).')
+        if self.source == 'ai_edited' and not self.based_on:
+            raise ValueError('AI로 배경을 바꾼 사진은 원본 사진을 선택해야 합니다.')
+        if self.source == 'ai_generated':
+            if self.based_on:
+                raise ValueError('AI 생성 이미지에는 원본 사진을 지정하지 않습니다.')
+            if self.role not in AI_GENERATED_ROLES:
+                raise ValueError('AI 생성 이미지는 사용 장면(분위기) 역할에만 쓸 수 있습니다.')
+        return self
 
 class Reference(Model):
     id: Text
@@ -92,6 +126,12 @@ class ProductFacts(Model):
             raise ValueError('reference ids must not match fact ids: '+', '.join(sorted(collision)))
         if len(self.reference_names)!=len(set(self.reference_names)):
             raise ValueError('reference_names: duplicate name')
+        photos={image.path for image in self.images if image.source is None}
+        for index,image in enumerate(self.images,1):
+            if image.based_on is not None and (image.based_on==image.path or image.based_on not in photos):
+                raise ValueError(f'사진 {index}: 원본은 같은 작업의 실제 사진이어야 합니다.')
+            if image.source is not None and image.path in photos:
+                raise ValueError(f'사진 {index}: 같은 파일을 실제 사진과 AI 이미지로 함께 쓸 수 없습니다.')
         return self
 
     def validate_images(self, image_dir: Path):

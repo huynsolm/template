@@ -120,6 +120,8 @@ def main(argv=None):
             images.add_argument('--output',type=Path,required=True)
             accept=sub.add_parser('accept',help='현재 draft.json을 승인해 새 작업으로 렌더링 (AI 호출 없음)')
             accept.add_argument('--job',type=Path,required=True)
+            accept.add_argument('--confirm-image',action='append',default=[],metavar='ID=CHECKS',
+                                help='AI 이미지 확인 (예: image-1=shape,color,composition 또는 image-2=no_product). 이미지마다 한 번씩')
             prompt=sub.add_parser('prompt')
             choice=prompt.add_mutually_exclusive_group(required=True)
             choice.add_argument('--facts',type=Path)
@@ -202,7 +204,12 @@ def main(argv=None):
                 result=folder/name
                 result.write_bytes(data)
             elif args.command=='accept':
-                result=accept_job(args.job,theme=args.theme,brand_color=args.brand_color)
+                confirmations={}
+                for value in args.confirm_image:
+                    key,_,checks=value.partition('=')
+                    if not key or not checks: parser.error('--confirm-image 형식: image-N=check1,check2')
+                    confirmations[key]=[c.strip() for c in checks.split(',') if c.strip()]
+                result=accept_job(args.job,theme=args.theme,brand_color=args.brand_color,image_confirmations=confirmations or None)
             elif args.command=='prompt':
                 if args.from_job:
                     if not args.regenerate: parser.error('--from-job requires --regenerate')

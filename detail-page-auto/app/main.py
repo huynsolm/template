@@ -192,6 +192,54 @@ def facts_data():
     return data
 
 
+SOURCE_LABELS={'실제 사진':None,'AI로 배경만 바꾼 사진':'ai_edited','AI 생성 분위기 이미지':'ai_generated'}
+
+
+def image_source_panel(ref, i):
+    """M8-B: where this image came from. Nothing is generated or sent anywhere by the app."""
+    root=S['image_root']
+    labels=list(SOURCE_LABELS); current=next(k for k,v in SOURCE_LABELS.items() if v==ref.get('source'))
+    chosen=SOURCE_LABELS[st.selectbox(f'사진 {i+1} 출처',labels,index=labels.index(current),key=f'image_source_{root}_{i}')]
+    for key in ('source','based_on','generator','edit_request'): ref.pop(key,None)
+    if chosen is None: return
+    ref['source']=chosen
+    if chosen=='ai_edited':
+        photos=[(j,other['path']) for j,other in enumerate(S['image_refs']) if j!=i and not other.get('source')]
+        if not photos:
+            st.warning('원본 실제 사진도 함께 올려 주세요. AI로 배경을 바꾼 사진은 원본과 나란히 비교해 승인합니다.')
+        else:
+            names=[f'사진 {j+1}' for j,_ in photos]
+            picked=st.selectbox(f'사진 {i+1}의 원본 사진',names,key=f'image_based_{root}_{i}')
+            ref['based_on']=photos[names.index(picked)][1]
+    else:
+        st.caption('AI 생성 이미지는 사용 장면(분위기) 역할에만 쓸 수 있고, 페이지에 "연출 이미지입니다"가 표시됩니다.')
+    generator=st.text_input(f'사진 {i+1} 만든 도구 (예: ChatGPT, Gemini)',key=f'image_generator_{root}_{i}',max_chars=40)
+    if generator.strip(): ref['generator']=generator.strip()
+    request=st.text_input(f'사진 {i+1} 요청 내용 요약 (선택)',key=f'image_request_{root}_{i}',max_chars=300)
+    if request.strip(): ref['edit_request']=request.strip()
+
+
+def image_prompt_panel():
+    """Copy-and-paste prompts for a subscribed AI chat (background change, mood picture)."""
+    from core.image_prompts import BACKGROUND_NAMES, background_prompt, mood_prompt
+    with st.expander('AI로 사진 배경 바꾸기·분위기 이미지 만들기 (프롬프트 복사)'):
+        st.caption('프롬프트를 복사해 구독 중인 AI 채팅에 붙여넣고, 배경 변경은 원본 사진을 직접 첨부하세요. '
+                   '받은 이미지를 위에서 함께 업로드하고 출처를 고르면 됩니다. 앱은 사진을 외부로 보내지 않습니다.')
+        try:
+            facts=ProductFacts.model_validate(facts_data())
+        except (ValueError,TypeError):
+            st.info('상품 정보와 사실을 먼저 입력하면 프롬프트를 만들 수 있습니다.')
+            return
+        kinds=list(BACKGROUND_NAMES); names=list(BACKGROUND_NAMES.values())
+        background=kinds[names.index(st.selectbox('배경',names,key='image_prompt_background'))]
+        place=st.text_input('사용 장소 (사용 장소 배경일 때, 예: 작은 작업실)',key='image_prompt_place',max_chars=100) if background=='usage_place' else ''
+        st.markdown('**배경 변경 프롬프트** — 원본 사진 1장을 첨부해 사용')
+        st.code(background_prompt(facts,background,place),language=None)
+        scene=st.text_input('분위기 이미지 장면 설명 (선택)',key='image_prompt_scene',max_chars=200)
+        st.markdown('**분위기 이미지 프롬프트** — 상품은 그리지 않는 장면용')
+        st.code(mood_prompt(facts,scene),language=None)
+
+
 def photo_previews():
     source=S.get('photo_preview_job') or (S.get('job') if S.get('image_root')==S.get('job') else '')
     if not source or not (Path(source)/'manifest.json').exists(): return
@@ -347,6 +395,8 @@ def input_page():
         from app.input_tools import crop_panel
         settings = crop_panel(ref, path, settings, i)
         ref['processing']=settings
+        image_source_panel(ref, i)
+    image_prompt_panel()
     if S['image_refs'] and st.button('사진 처리 미리보기',key='photo_preview',disabled=S.get('busy',False)):
         def preview_photos():
             facts=ProductFacts.model_validate(facts_data())
@@ -661,8 +711,12 @@ def approval_page(job):
     theme = manifest.get('theme','classic')
     from core.claims import claim_items
     numeric_items = claim_items(job)
+    from core.editor import provenance_path
+    from core.image_checks import ai_image_items, SOURCE_NAMES
+    image_items = ai_image_items(ProductFacts.model_validate(read_json(provenance_path(job,'facts.json'))))
     context = (str(job), theme, manifest.get('brand_color'),
-               (job/'draft.json').read_bytes(),tuple(item['id'] for item in numeric_items))
+               (job/'draft.json').read_bytes(),tuple(item['id'] for item in numeric_items),
+               tuple((item['id'],item['path']) for item in image_items))
     if S.get('approval_context')!=context:
         for key in list(S):
             if key.startswith('check_'): del S[key]
@@ -688,8 +742,32 @@ def approval_page(job):
             checks.append(checked)
             if checked:
                 confirmations.append(item['id'])
+    image_confirmations = {}
+    if image_items:
+        st.subheader('AI로 만든 이미지 확인')
+        st.caption('이미지마다 항목을 하나씩 확인하세요. 하나라도 다르면 승인하지 말고 ①에서 이미지를 바꾸세요.')
+        hints = {record.get('source_path'): record for record in manifest.get('image_processing',[])}
+    for item in image_items:
+        with st.container(border=True):
+            st.write(f"사진 {item['index']+1} · {SOURCE_NAMES[item['source']]} · {item['generator']}")
+            if item.get('edit_request'): st.caption('요청 내용: '+item['edit_request'])
+            if item['original_path']:
+                left,right=st.columns(2)
+                left.image(str(job/item['original_path']),caption='원본 실제 사진',width='stretch')
+                right.image(str(job/item['path']),caption='AI로 배경을 바꾼 사진',width='stretch')
+                difference=hints.get(item['source_path'],{}).get('comparison',{}).get('aspect_difference')
+                if difference is not None:
+                    st.caption(f'참고: 가로세로 비율 차이 {difference:.0%} (판정이 아니라 확인을 돕는 수치입니다)')
+            else:
+                st.image(str(job/item['path']),caption='AI 생성 이미지 (페이지에 "연출 이미지입니다" 표시)',width=320)
+            done=[]
+            for key,label in item['checks']:
+                checked=st.checkbox(label,key=f"check_image_{job.name}_{item['id']}_{key}")
+                checks.append(checked)
+                if checked: done.append(key)
+            image_confirmations[item['id']]=done
     if st.button('모두 확인했으며 승인',key='accept',type='primary',disabled=not all(checks) or S.get('busy',False)):
-        ok,accepted=perform('승인 결과 렌더링',lambda:accept_job(job,claim_confirmations=confirmations))
+        ok,accepted=perform('승인 결과 렌더링',lambda:accept_job(job,claim_confirmations=confirmations,image_confirmations=image_confirmations or None))
         if ok:
             schedule_open(accepted,6)
         else: st.rerun()

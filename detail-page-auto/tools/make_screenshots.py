@@ -239,6 +239,88 @@ def make_m8a_screenshots(images: Path, artifacts: Path):
     return results
 
 
+def make_m8b_screenshots(images: Path, output: Path):
+    """M8-B captures: ⑥ side-by-side check of an AI background change, and a labelled AI mood picture.
+
+    Every image is drawn here with Pillow; no AI service is called."""
+    import shutil
+    from PIL import Image, ImageDraw
+    from core.editor import preview_job
+    from core.facts import ProductFacts
+    from core.workflow import create_job, ingest_job, read_json
+    images.mkdir(parents=True,exist_ok=True)
+    photos = output/'m8b-photos'; photos.mkdir(parents=True,exist_ok=True)
+    for path in ROOT.glob('samples/rich-*.png'):
+        shutil.copyfile(path,photos/path.name)
+    with Image.open(ROOT/'samples/rich-hero.png') as hero:
+        edited = hero.convert('RGB')
+        ImageDraw.Draw(edited).rectangle((0,0,edited.width,60),fill='#f4efe6')
+        edited.save(photos/'ai-background.png')
+    scene = Image.new('RGB',(1720,1290),'#dfe9e4')
+    ImageDraw.Draw(scene).rectangle((200,700,1500,1100),fill='#b9c9bf')
+    scene.save(photos/'ai-scene.png')
+    data = read_json(ROOT/'samples/facts-rich.json')
+    data['images'][1] = {'path':'ai-scene.png','role':'lifestyle','source':'ai_generated','generator':'가상 AI 도구'}
+    data['images'].append({'path':'ai-background.png','role':'detail','source':'ai_edited','based_on':'rich-hero.png',
+                           'generator':'가상 AI 도구','edit_request':'배경만 밝은 베이지로'})
+    jobs = output/'m8b-jobs'
+    if jobs.exists(): shutil.rmtree(jobs)
+    job = create_job(ProductFacts.model_validate(data),photos,jobs,theme='modern')
+    ingest_job(job,(ROOT/'samples/answer-rich.txt').read_text(encoding='utf-8'),theme='modern')
+    bundle = preview_job(job)
+    manifest = read_json(bundle/'manifest.json')
+    section = next(s for s in manifest['sections'] if s['id']=='image-1')
+    full = Image.new('RGB',(860,manifest['height']))
+    for part in manifest['pages']:
+        with Image.open(bundle/part['png']) as rendered:
+            full.paste(rendered,(0,part['top']))
+    full.crop((0,section['top'],860,section['bottom'])).save(images/'m8b-staged.png')
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1',0))
+        port = listener.getsockname()[1]
+    environment = {**os.environ,'DETAIL_PAGE_OUTPUTS':str(jobs)}
+    with (output/'m8b-server.log').open('w') as log:
+        process = subprocess.Popen([sys.executable,'-m','streamlit','run','app/main.py','--server.address','127.0.0.1',
+                                    '--server.port',str(port),'--browser.gatherUsageStats','false'],
+                                   cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,shell=False)
+        try:
+            deadline = time.monotonic()+30
+            while True:
+                try:
+                    urllib.request.urlopen(f'http://127.0.0.1:{port}/_stcore/health',timeout=1).close()
+                    break
+                except OSError:
+                    if process.poll() is not None or time.monotonic()>deadline:
+                        raise RuntimeError('Streamlit startup failed')
+                    time.sleep(.1)
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(executable_path=chromium_path(pw.chromium.executable_path))
+                try:
+                    page = browser.new_page(viewport={'width':1440,'height':1100})
+                    page.set_default_timeout(60000)
+                    page.goto(f'http://127.0.0.1:{port}')
+                    page.get_by_role('button',name='기존 작업 이어하기',exact=True).click()
+                    page.get_by_text('⑥ 승인',exact=True).click()
+                    heading = page.get_by_role('heading',name='AI로 만든 이미지 확인',exact=True)
+                    expect(heading).to_be_visible(timeout=60000)
+                    page.wait_for_timeout(1500)
+                    item = page.get_by_text('AI 배경 변경 · 가상 AI 도구',exact=False).first
+                    item.scroll_into_view_if_needed()
+                    page.evaluate("() => { const main = document.querySelector('section.stMain, [data-testid=stMain]'); if (main) main.scrollBy(0, -40); }")
+                    page.wait_for_timeout(500)
+                    page.screenshot(path=str(images/'m8b-approval.png'))
+                finally:
+                    browser.close()
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
+    return {'job':str(job),'images':[str(images/name) for name in ('m8b-approval.png','m8b-staged.png')]}
+
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description='샘플 화면 캡처를 명시적으로 갱신합니다. pytest에서는 임시 경로만 사용합니다.')
@@ -247,7 +329,11 @@ if __name__=='__main__':
     parser.add_argument('--themes-only',action='store_true',help='테마 7종의 상세페이지 상단 캡처만 생성')
     parser.add_argument('--m7-only',action='store_true',help='가상 브로슈어 입력 도우미 캡처')
     parser.add_argument('--m8a-only',action='store_true',help='새 테마 4종 × 긴 샘플 답변 상단 캡처(줄 수 측정 결과 포함)')
+    parser.add_argument('--m8b-only',action='store_true',help='AI 이미지 출처 확인(⑥)과 연출 이미지 표시 캡처')
     args=parser.parse_args()
+    if args.m8b_only:
+        print(json.dumps(make_m8b_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
+        sys.exit(0)
     if args.m8a_only:
         print(json.dumps(make_m8a_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
         sys.exit(0)

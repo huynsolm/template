@@ -105,7 +105,18 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - 사용자 결정(2026-11-24, `CODEX_TASK_M8A.md`에 기록): 제목 굵기 800 이상, 단 글꼴 최대 굵기가 낮으면 그 값(natural 고운바탕 700, impact 검은고딕 400 — `themes.required_heading_weight`). 자동 정렬은 5종만. 측정은 data 속성 대신 `MEASURE_SPEC` 선택자.
 
 - 최종 확인(`M8_A_REVIEW_3.md`, 2026-11-24): **M8-B 진행 가능**. 전체 470 passed.
-- 다음: `CODEX_TASK_M8B.md`(이미지 소스). 확인 질문 3개(생성 이미지 허용 역할, "연출 이미지입니다" 표시, 배경 선택지)에 사용자 답을 받은 뒤 구현.
+- M8-B 구현 완료(아래 "M8-B 현재 상태"), Codex 검수 대기.
+
+## M8-B 현재 상태 (AI로 만든 이미지를 소스로)
+
+사용자 결정(2026-11-24): AI 생성 이미지는 `lifestyle`에만, 생성 이미지 아래에만 "연출 이미지입니다", 배경 선택지 4종(흰 스튜디오·밝은 실내·사용 장소·브랜드 색 계열). 앱은 이미지를 만들거나 보내지 않는다.
+- `core/facts.py` `ImageRef`: `source`(None=실제 사진, `ai_edited`, `ai_generated`), `based_on`(ai_edited 필수, 같은 작업의 실제 사진), `generator`(필수, 주소·계정 형태 거부), `edit_request`. None 기본값이라 기존 JSON은 그대로.
+- `core/image_checks.py`: 처리 기록(`provenance_record`: 원본·결과 SHA-256, 비율 차이), 검수 항목(`AI_IMAGE_UNCONFIRMED`, 비율 10% 초과 시 `AI_IMAGE_SHAPE_SUSPECT`), `ai_image_items`·`confirmed_images`(이미지마다 모든 항목 필수, 일괄 승인 없음), `image_sources`.
+- `core/image_prompts.py` + `prompts/image_background_v1.md`·`image_mood_v1.md`: 복사·붙여넣기 프롬프트. 상품 정보는 `data_block`(가격·후기·주장 제외).
+- `workflow`: `create_job`이 `based_on` 경로도 작업 안 경로로 바꾼다. `accept_job(image_confirmations=...)`가 `image_checks`·`image_sources`를 작업·렌더링 manifest(→ ZIP)에 기록. AI 이미지가 있으면 `ingest --accept-review` 거부, CLI는 `accept --confirm-image`.
+- 렌더링: `ImageSection`·`GalleryPhoto`의 `staged`(생성 이미지만) → 템플릿에 인라인 스타일로 안내 문구. 실제 사진만 쓴 작업은 HTML이 바뀌지 않는다.
+- 화면: ① 출처·원본·도구 입력과 프롬프트 패널, ⑥ 원본·결과 나란히 보기와 항목별 체크.
+- 테스트 `tests/test_m8b.py`, 캡처 `tools/make_screenshots.py --m8b-only`. 검수 요청 `CODEX_REVIEW_M8B.md`.
 
 ## 제품과 현재 흐름
 

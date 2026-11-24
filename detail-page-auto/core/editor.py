@@ -234,6 +234,10 @@ def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     rendered=read_json(bundle/'manifest.json')
     review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']+rendered.get('copy_reviews',[])
     snapshot_bundle(bundle,draft_bytes,review)
+    from .image_checks import image_sources
+    rendered=read_json(bundle/'manifest.json')
+    rendered['image_sources']=image_sources(ProductFacts.model_validate(read_json(provenance_path(job,'facts.json'))))
+    write_json(bundle/'manifest.json',rendered)
     if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
         manifest.update(review_accepted=False)
         manifest.pop('rendered_job',None)
