@@ -157,6 +157,8 @@ def main(argv=None):
             export.add_argument('--profile',required=True,help='generic, smartstore, coupang 또는 profiles/user/의 사용자 프로필 이름')
             export.add_argument('--format',choices=['jpg','png'],help='생략하면 프로필의 첫 번째 형식')
             export.add_argument('--output',type=Path,help='ZIP 저장 폴더 (기본: 작업 폴더의 exports/)')
+            pdf=sub.add_parser('pdf',help='현재 결과(승인본 또는 미리보기)를 글자가 살아 있는 PDF로 저장 (AI 호출 없음)')
+            pdf.add_argument('--job',type=Path,required=True)
             args=parser.parse_args(argv)
             terms=None
             if getattr(args,'review_terms',None):
@@ -191,6 +193,10 @@ def main(argv=None):
                 if any(item.get('settings',{}).get('remove_background') and not item.get('background_removed') for item in meta['image_processing']):
                     print(result.resolve())
                     raise ValueError('배경 제거 실패: 기본 처리본은 출력 작업 폴더에 유지했습니다.')
+            elif args.command=='pdf':
+                from core.export import current_bundle
+                from core.pdf import make_pdf
+                result=make_pdf(current_bundle(args.job))
             elif args.command=='export':
                 from core.export import build_export_zip, current_bundle, export_bundle
                 outcome=export_bundle(current_bundle(args.job),args.profile,fmt=args.format)

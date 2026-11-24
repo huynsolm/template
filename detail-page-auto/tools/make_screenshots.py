@@ -321,6 +321,77 @@ def make_m8b_screenshots(images: Path, output: Path):
     return {'job':str(job),'images':[str(images/name) for name in ('m8b-approval.png','m8b-staged.png')]}
 
 
+def make_m8c_screenshots(images: Path, output: Path, samples: Path):
+    """M8-C: colour candidates on ①, the first PDF page next to the first JPG, and virtual sample PDFs for the Canva check."""
+    import shutil
+    from PIL import Image
+    from core.assemble import assemble
+    from core.copy_schema import CopyDraft
+    from core.facts import ProductFacts
+    from core.ingest import extract_json
+    from core.pdf import make_pdf
+    from core.render import render
+    images.mkdir(parents=True,exist_ok=True); samples.mkdir(parents=True,exist_ok=True); output.mkdir(parents=True,exist_ok=True)
+    facts = ProductFacts.model_validate_json((ROOT/'samples/facts-rich.json').read_text())
+    document, _ = assemble(facts, CopyDraft.model_validate(extract_json((ROOT/'samples/answer-rich.txt').read_text())))
+    made = []
+    for theme in ('modern','natural','classic'):
+        bundle = render(document, ROOT/'samples', output, theme=theme, png=True)
+        pdf = make_pdf(bundle)
+        target = samples/f'canva-sample-{theme}.pdf'
+        shutil.copyfile(pdf, target); made.append(str(target))
+        if theme == 'modern' and shutil.which('pdftoppm'):
+            subprocess.run(['pdftoppm','-png','-r','96','-f','1','-l','1','-singlefile',str(pdf),str(output/'pdf-page1')],check=True,shell=False)
+            with Image.open(output/'pdf-page1.png') as pdf_page, Image.open(bundle/json.loads((bundle/'manifest.json').read_text())['pages'][0]['png']) as jpg_page:
+                height = max(pdf_page.height, jpg_page.height)
+                pair = Image.new('RGB', (pdf_page.width + jpg_page.width + 24, height), 'white')
+                pair.paste(jpg_page, (0, 0)); pair.paste(pdf_page.convert('RGB'), (jpg_page.width + 24, 0))
+                pair.save(images/'m8c-pdf-vs-jpg.png')
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1',0))
+        port = listener.getsockname()[1]
+    environment = {**os.environ,'DETAIL_PAGE_OUTPUTS':str(output/'jobs')}
+    with (output/'m8c-server.log').open('w') as log:
+        process = subprocess.Popen([sys.executable,'-m','streamlit','run','app/main.py','--server.address','127.0.0.1',
+                                    '--server.port',str(port),'--browser.gatherUsageStats','false'],
+                                   cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,shell=False)
+        try:
+            deadline = time.monotonic()+30
+            while True:
+                try:
+                    urllib.request.urlopen(f'http://127.0.0.1:{port}/_stcore/health',timeout=1).close()
+                    break
+                except OSError:
+                    if process.poll() is not None or time.monotonic()>deadline:
+                        raise RuntimeError('Streamlit startup failed')
+                    time.sleep(.1)
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(executable_path=chromium_path(pw.chromium.executable_path))
+                try:
+                    page = browser.new_page(viewport={'width':1440,'height':1000})
+                    page.set_default_timeout(60000)
+                    page.goto(f'http://127.0.0.1:{port}')
+                    page.get_by_role('button',name='샘플 데이터 넣기',exact=True).click()
+                    page.get_by_text('사진에서 브랜드 색 후보 찾기',exact=True).click()
+                    page.get_by_role('button',name='색 후보 찾기',exact=True).click()
+                    expect(page.get_by_role('button',name='이 색 사용').first).to_be_visible(timeout=60000)
+                    page.wait_for_timeout(800)
+                    page.get_by_role('button',name='이 색 사용').first.scroll_into_view_if_needed()
+                    page.evaluate("() => { const main = document.querySelector('[data-testid=stMain], section.stMain'); if (main) main.scrollBy(0, 250); }")
+                    page.wait_for_timeout(500)
+                    page.screenshot(path=str(images/'m8c-colors.png'))
+                finally:
+                    browser.close()
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
+    return {'samples': made, 'images': [str(images/n) for n in ('m8c-colors.png','m8c-pdf-vs-jpg.png')]}
+
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description='샘플 화면 캡처를 명시적으로 갱신합니다. pytest에서는 임시 경로만 사용합니다.')
@@ -330,7 +401,12 @@ if __name__=='__main__':
     parser.add_argument('--m7-only',action='store_true',help='가상 브로슈어 입력 도우미 캡처')
     parser.add_argument('--m8a-only',action='store_true',help='새 테마 4종 × 긴 샘플 답변 상단 캡처(줄 수 측정 결과 포함)')
     parser.add_argument('--m8b-only',action='store_true',help='AI 이미지 출처 확인(⑥)과 연출 이미지 표시 캡처')
+    parser.add_argument('--m8c-only',action='store_true',help='색 후보 화면, PDF 첫 쪽, 캔바 확인용 가상 샘플 PDF')
+    parser.add_argument('--samples',type=Path,default=ROOT/'docs/samples')
     args=parser.parse_args()
+    if args.m8c_only:
+        print(json.dumps(make_m8c_screenshots(args.images,args.output,args.samples),ensure_ascii=False,indent=2))
+        sys.exit(0)
     if args.m8b_only:
         print(json.dumps(make_m8b_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
         sys.exit(0)

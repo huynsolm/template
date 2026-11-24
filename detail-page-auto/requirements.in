@@ -6,3 +6,4 @@ pytest>=9,<10
 
 streamlit>=1.40,<2
 openpyxl>=3.1,<4
+pypdf>=5,<7

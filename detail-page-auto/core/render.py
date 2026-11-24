@@ -34,56 +34,68 @@ def chromium_path(playwright_default):
     return shutil.which('chromium')
 
 
-def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, top_only=False, measure=None):
-    """Load only this export's files, await assets, and return image + geometry."""
+def open_offline(pw, html: Path, families=('DetailKorean',)):
+    """Open one bundle's page.html through the offline virtual origin and wait for fonts,
+    images and the M8-A layout script. Returns (browser, page, network, failures)."""
     html = Path(html).resolve()
     network = []
     failures = []
+    executable = chromium_path(pw.chromium.executable_path)
+    browser = pw.chromium.launch(executable_path=executable, headless=True)
+    try:
+        context = browser.new_context(viewport={'width': 860, 'height': 1}, device_scale_factor=1, service_workers='block', offline=True)
+        page = context.new_page()
+        page.set_default_timeout(15000)
+        def route(request_route):
+            url = request_route.request.url
+            parsed = urlparse(url)
+            local_path = (html.parent / unquote(parsed.path).lstrip('/')).resolve()
+            allowed = parsed.scheme == 'http' and parsed.netloc == '127.0.0.1:18600' and local_path.is_relative_to(html.parent) and local_path.is_file()
+            if allowed:
+                request_route.fulfill(body=local_path.read_bytes(), content_type=mimetypes.guess_type(str(local_path))[0] or 'application/octet-stream')
+            else:
+                network.append(url)
+                request_route.abort()
+        page.route('**/*', route)
+        page.on('requestfailed', lambda r: failures.append(r.url))
+        # Virtual loopback origin: requests are fulfilled from disk; no socket is opened.
+        page.goto('http://127.0.0.1:18600/page.html', wait_until='load')
+        page.evaluate('''async (families) => {
+            let timer;
+            try {
+                await Promise.race([
+                    (async () => {
+                        await Promise.all(families.map(family =>
+                            document.fonts.load('22px "' + family + '"', '한글Aa012')));
+                        await document.fonts.ready;
+                        await Promise.all([...document.images].map(image => image.decode()));
+                    })(),
+                    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('asset loading timeout (15000ms)')), 15000); })
+                ]);
+            } finally { clearTimeout(timer); }
+        }''', families)
+        # M8-A layout script (new themes) sets alignment after fonts load; wait for it.
+        page.evaluate('''async () => {
+            if (!document.querySelector('script[src="assets/layout.js"]')) return;
+            const start = Date.now();
+            while (!document.documentElement.hasAttribute('data-layout-done')) {
+                if (Date.now() - start > 15000) throw new Error('layout script timeout');
+                await new Promise(resolve => setTimeout(resolve, 20));
+            }
+        }''')
+        return browser, page, network, failures
+    except BaseException:
+        browser.close()
+        raise
+
+
+def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, top_only=False, measure=None):
+    """Load only this export's files, await assets, and return image + geometry."""
+    html = Path(html).resolve()
     try:
         with sync_playwright() as pw:
-            executable = chromium_path(pw.chromium.executable_path)
-            browser = pw.chromium.launch(executable_path=executable, headless=True)
+            browser, page, network, failures = open_offline(pw, html, families)
             try:
-                context = browser.new_context(viewport={'width': 860, 'height': 1}, device_scale_factor=1, service_workers='block', offline=True)
-                page = context.new_page()
-                page.set_default_timeout(15000)
-                def route(request_route):
-                    url = request_route.request.url
-                    parsed = urlparse(url)
-                    local_path = (html.parent / unquote(parsed.path).lstrip('/')).resolve()
-                    allowed = parsed.scheme == 'http' and parsed.netloc == '127.0.0.1:18600' and local_path.is_relative_to(html.parent) and local_path.is_file()
-                    if allowed:
-                        request_route.fulfill(body=local_path.read_bytes(), content_type=mimetypes.guess_type(str(local_path))[0] or 'application/octet-stream')
-                    else:
-                        network.append(url)
-                        request_route.abort()
-                page.route('**/*', route)
-                page.on('requestfailed', lambda r: failures.append(r.url))
-                # Virtual loopback origin: requests are fulfilled from disk; no socket is opened.
-                page.goto('http://127.0.0.1:18600/page.html', wait_until='load')
-                page.evaluate('''async (families) => {
-                    let timer;
-                    try {
-                        await Promise.race([
-                            (async () => {
-                                await Promise.all(families.map(family =>
-                                    document.fonts.load('22px "' + family + '"', '한글Aa012')));
-                                await document.fonts.ready;
-                                await Promise.all([...document.images].map(image => image.decode()));
-                            })(),
-                            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('asset loading timeout (15000ms)')), 15000); })
-                        ]);
-                    } finally { clearTimeout(timer); }
-                }''', families)
-                # M8-A layout script (new themes) sets alignment after fonts load; wait for it.
-                page.evaluate('''async () => {
-                    if (!document.querySelector('script[src="assets/layout.js"]')) return;
-                    const start = Date.now();
-                    while (!document.documentElement.hasAttribute('data-layout-done')) {
-                        if (Date.now() - start > 15000) throw new Error('layout script timeout');
-                        await new Promise(resolve => setTimeout(resolve, 20));
-                    }
-                }''')
                 geometry = page.evaluate('''families => ({
                     height: Math.ceil(document.documentElement.scrollHeight),
                     horizontal_overflow: document.documentElement.scrollWidth > 860,

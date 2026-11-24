@@ -129,7 +129,16 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - ⑤는 이미지별로 확인 완료/확인 전을 나눠 표시. 도구 이름에 `·` 허용(예: DALL·E 3).
 
 - M8-B 최종 확인(`M8_B_REVIEW_3.md`, 2026-11-24): **M8-C 진행 가능**. 전체 525 passed.
-- 다음: `CODEX_TASK_M8C.md`(색 후보·PDF). 확인 질문 4개에 사용자 답을 받은 뒤 구현.
+- M8-C 구현 완료(아래), Codex 검수 대기.
+
+## M8-C 현재 상태 (색 후보 · PDF)
+
+사용자 결정(2026-11-24): 색은 후보 제안만, PDF는 JPG와 같은 위치에서 여러 쪽, `pypdf` 추가(requirements.in/lock, 해시), 캔바는 사용자가 가상 샘플로 직접 확인.
+- `core/colors.py`: 가장자리 띠 색을 배경으로 빼고 Pillow 양자화(MEDIANCUT, 디더 없음)로 후보 최대 5개, 무채색 제외, 결정적. 테마 7종의 대비 처리(ok/adjusted/warning). AI 생성 이미지 제외. `job_color_suggestions`가 작업 manifest `color_suggestions`에 기록(요청 시 계산).
+- `core/render.py`: 오프라인 페이지 열기를 `open_offline()`로 분리(동작 동일). `core/pdf.py`의 `make_pdf(bundle)`가 같은 페이지를 named page(`@page pN`, +2px 여유)로 나눠 인쇄, `pypdf`로 쪽 수·크기·문구(텍스트 노드 전부) 검사, 빠지면 실패·파일 없음. manifest `pdf`(쪽 수·크기·글꼴·검사 수), ZIP 포함, `export_block` 동일 적용, DRAFT면 `page.DRAFT.pdf`.
+- 화면: ①·⑤ 색 후보(견본 이미지 + "이 색 사용"), ⑦ PDF 만들기·다운로드. CLI `pdf --job`.
+- 캔바 확인 절차 `detail-page-auto/docs/canva-check.md`, 샘플 `docs/samples/canva-sample-{modern,natural,classic}.pdf`(가상). 결과 받으면 README "캔바에서 수정할 때 알아 둘 점" 갱신.
+- 테스트 `tests/test_m8c.py`, 캡처 `tools/make_screenshots.py --m8c-only`(PDF 쪽 캡처는 있으면 `pdftoppm` 사용, 앱 의존성 아님). 검수 요청 `CODEX_REVIEW_M8C.md`.
 
 ## 제품과 현재 흐름
 

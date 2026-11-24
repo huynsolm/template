@@ -240,6 +240,53 @@ def image_prompt_panel():
         st.code(mood_prompt(facts,scene),language=None)
 
 
+THEME_LABEL={'ok':'그대로','adjusted':'글자색 보정','warning':'대비 경고'}
+
+
+def color_choices(candidates, target_key, prefix):
+    """Show candidate swatches; a click only sets the colour widget (nothing changes until chosen)."""
+    from core.colors import swatch
+    if not candidates:
+        st.caption('사진에서 강조색으로 쓸 만한 색을 찾지 못했습니다(흰색·회색 위주).'); return
+    columns=st.columns(len(candidates))
+    for i,(column,item) in enumerate(zip(columns,candidates)):
+        column.image(swatch(item['color']),caption=f"{item['color']} · {item['share']:.0%}")
+        column.caption(f"흰 바탕 대비 {item['contrast_on_white']}:1")
+        notes=[f'{theme} {THEME_LABEL[state]}' for theme,state in item['themes'].items() if state!='ok']
+        if notes: column.caption(' · '.join(notes))
+        column.button('이 색 사용',key=f'{prefix}_{i}',on_click=lambda c=item['color']:S.__setitem__(target_key,c))
+
+
+def color_candidates_input():
+    from core.colors import suggest_colors
+    refs=[ref for ref in S.get('image_refs',[]) if ref.get('source')!='ai_generated']
+    if not refs or not S.get('image_root'): return
+    with st.expander('사진에서 브랜드 색 후보 찾기'):
+        st.caption('대표 사진부터 살펴 배경을 뺀 주요 색을 제안합니다. 고르기 전에는 바뀌지 않습니다. AI 생성 이미지는 쓰지 않습니다.')
+        refs.sort(key=lambda ref:ref['role']!='hero')
+        key=(S['image_root'],tuple(ref['path'] for ref in refs))
+        if S.get('color_input_key')!=key:
+            S['color_input_key']=key; S['color_input']=None
+        if S['color_input'] is None and st.button('색 후보 찾기',key='find_colors'):
+            ok,found=perform('색 후보 찾기',lambda:suggest_colors([Path(S['image_root'])/ref['path'] for ref in refs]))
+            if ok: S['color_input']=found
+        if S['color_input'] is not None:
+            color_choices(S['color_input'],'product_brand_color','use_color')
+
+
+def color_candidates_job(job):
+    from core.colors import job_color_suggestions
+    with st.expander('사진에서 뽑은 브랜드 색 후보'):
+        st.caption('고르면 미리보기 브랜드 색에 들어가고 다시 렌더링합니다. 테마별 대비 처리도 함께 보여 줍니다.')
+        manifest=read_json(job/'manifest.json')
+        record=manifest.get('color_suggestions')
+        if record is None and st.button('색 후보 찾기',key='find_job_colors'):
+            ok,record=perform('색 후보 찾기',lambda:job_color_suggestions(job))
+            if not ok: record=None
+        if record is not None:
+            color_choices(record['candidates'],'preview_brand','use_preview_color')
+
+
 def photo_previews():
     source=S.get('photo_preview_job') or (S.get('job') if S.get('image_root')==S.get('job') else '')
     if not source or not (Path(source)/'manifest.json').exists(): return
@@ -325,6 +372,7 @@ def input_page():
     st.text_input('카테고리',key='product_category'); field_error('product.category')
     st.text_input('가격 (표시용)',key='product_price'); field_error('product.price')
     st.color_picker('브랜드 색상',key='product_brand_color')
+    color_candidates_input()
     st.subheader('상품 사실')
     for index,row in enumerate(S['fact_rows']):
         uid=row['_uid']
@@ -694,6 +742,7 @@ def preview_page(job):
         S['preview_brand'] = current_brand
     if 'theme_choice' not in S: S['theme_choice']=current_theme
     selected=st.selectbox('디자인 테마',THEME_IDS,key='theme_choice')
+    color_candidates_job(job)
     brand = st.color_picker('미리보기 브랜드 색', key='preview_brand')
     if selected != current_theme or brand.lower() != current_brand.lower():
         ok,bundle=perform('디자인 미리보기 렌더링',lambda:preview_job(job,theme=selected,brand_color=brand))
@@ -799,8 +848,26 @@ def download_page(job):
         S['download_zip']=data
         filename=manifest['job_id']+('' if manifest.get('review_accepted') else '.DRAFT')+'.zip'
         st.download_button('ZIP 다운로드',data=data,file_name=filename,mime='application/zip',key='download_zip_button')
+    pdf_section(bundle)
     export_section(bundle)
     display_bundle(bundle)
+
+
+def pdf_section(bundle):
+    """M8-C: PDF with selectable text (the rules live in core/pdf.py)."""
+    from core.pdf import make_pdf
+    st.subheader('PDF (글자 선택·캔바 편집용)')
+    st.caption('JPG와 같은 위치에서 쪽을 나눈 PDF입니다. 글자가 이미지가 아니라 글자로 들어가는지 검사하고 만듭니다. 만든 뒤 ZIP 다운로드에도 포함됩니다.')
+    manifest=read_json(bundle/'manifest.json')
+    if not manifest.get('pdf') and st.button('PDF 만들기',key='make_pdf',disabled=S.get('busy',False)):
+        ok,_=perform('PDF 만들기',lambda:make_pdf(bundle))
+        st.rerun()
+    manifest=read_json(bundle/'manifest.json')
+    if manifest.get('pdf'):
+        info=manifest['pdf']
+        st.caption(f"{info['pages']}쪽 · 글자 {info['text_check']['runs']}곳 확인 · 글꼴: {', '.join(info['fonts'])}")
+        st.download_button('PDF 다운로드',data=(bundle/info['file']).read_bytes(),file_name=manifest['job_id']+'-'+info['file'],
+                           mime='application/pdf',key='download_pdf_button')
 
 
 def export_section(bundle):
