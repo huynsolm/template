@@ -13,7 +13,7 @@
 |---|---|
 | `.venv/bin/python -m pytest -q tests/test_m8a_review.py tests/test_m8a.py` | **34 passed / 0 failed / 0 skipped**, 138.33초, 종료 코드 0 |
 | `UV_CACHE_DIR=/tmp/template-uv uv pip sync --python .venv/bin/python --require-hashes requirements.lock` | 기존 가상환경에서 빠진 openpyxl 3.1.5·et-xmlfile 2.0.0만 설치. 소스·잠금 파일 변경 없음 |
-| `.venv/bin/python -m pytest -q` | **470 passed / 0 failed / 0 skipped**, 954.22초(15분 54초), 종료 코드 0** |
+| `.venv/bin/python -m pytest -q` | **470 passed / 0 failed / 0 skipped**, 954.22초(15분 54초), 종료 코드 0 |
 | 테스트 후 `git status --porcelain=v1` | **전체 테스트 종료 직후 빈 출력. 보고서 작성 전 추적 파일 변경 없음** |
 
 최초 전체 실행은 openpyxl이 없는 기존 가상환경 때문에 test_batch.py·test_references.py 수집 오류 2건으로 중단됐다(1.08초). 제품 테스트 실패로 집계하지 않고 환경 문제로 구분했다. 잠금 파일대로 동기화한 뒤 전체를 재실행했다. 렌더 포트 충돌을 피하려고 집중 테스트·수동 재현·전체 테스트는 순서대로 실행했다.
