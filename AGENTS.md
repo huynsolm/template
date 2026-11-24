@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## 현재 작업
-`CODEX_TASK_M8A.md`(디자인 품질 규칙: 1 섹션 1 메시지, 글자 위계, 자동 정렬, 렌더링 줄 수 측정)를 구현한다. 새 테마 4종에만 적용하고 기존 테마 3종 결과는 바꾸지 않는다. M1~M7은 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`와 `detail-page-auto/README.md`를 읽는다. 작업 전 `git fetch`로 원격 변경을 확인한다.
+`CODEX_TASK_M8B.md`(AI로 만든 이미지를 소스로 받기: 출처 기록, 복사·붙여넣기 이미지 프롬프트, 승인 시 형태·색상·구성 일치 확인)를 구현한다. 구현은 Claude, 검수는 Codex가 한다. 지시서의 "확인 질문"에 사용자 답을 받은 뒤 시작한다. M1~M8-A는 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`와 `detail-page-auto/README.md`를 읽는다. 작업 전 `git fetch`로 원격 변경을 확인한다.
 
 ## 규칙
 - 유료 AI API(Anthropic/OpenAI/Google API 키·SDK)와 외부 이미지 처리 서비스를 사용하지 않는다. 문구 생성은 붙여넣기 방식(기본)과 사용자가 로그인한 공식 CLI(`claude`, `codex`, `gemini`, 선택)로만 한다.
@@ -22,4 +22,4 @@
 - 외부 명령은 `shell=False` 인자 리스트로 실행한다.
 - 외부 이미지·폰트를 다운로드해 저장소에 넣지 않는다. 테스트 이미지는 Pillow로 생성한다.
 - 테스트를 건너뛰거나 비활성화해서 통과시키지 않는다. 실제 Chromium 렌더링 테스트를 포함한다.
-- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M8A.md`의 "완료 보고 형식"대로 보고한다.
+- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M8B.md`의 "완료 보고 형식"대로 보고한다.
