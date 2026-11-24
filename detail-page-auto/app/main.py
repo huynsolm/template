@@ -632,6 +632,14 @@ def display_bundle(bundle):
     if manifest.get('needs_review'):
         if manifest.get('review_accepted'): st.info('승인 완료 · 검수 기록은 review.json에 보존됩니다.')
         else: st.error('검수 필요: 근거·수치·광고 표현을 확인해 주세요.')
+    from core.image_checks import SOURCE_NAMES
+    ai=[item for item in manifest.get('image_sources',[]) if item['source']!='photo']
+    if ai:
+        listed=', '.join(f"사진 {item['index']+1} {SOURCE_NAMES[item['source']]}({item.get('generator','')})" for item in ai)
+        if manifest.get('image_checks'):
+            st.info('AI로 만든 이미지 · 이미지별 확인 완료: '+listed)
+        else:
+            st.warning('AI로 만든 이미지 '+str(len(ai))+'장 · 확인 전: '+listed+'. ⑥ 승인에서 원본과 나란히 보고 이미지마다 확인해야 합니다.')
     for page in manifest['pages']: st.image(str(bundle/page['file']),width='stretch')
     return manifest
 

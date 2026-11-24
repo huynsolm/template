@@ -68,6 +68,8 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
     brand = brand_color if brand_color is not None else facts.product.brand_color
     styles=theme_styles(theme,brand)
     paths=facts.validate_images(images)
+    from .image_checks import check_distinct_files
+    check_distinct_files(facts,paths)
     output=Path(output); output.mkdir(parents=True,exist_ok=True)
     job=Path(tempfile.mkdtemp(prefix='job-',dir=output))
     try:
@@ -79,7 +81,9 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
         snapshot=facts.model_dump(exclude_none=True)
         for image in snapshot['images']:
             image['path']=mapping[image['path']]
-            if image.get('based_on'): image['based_on']=mapping[image['based_on']]
+            if image.get('based_on'):
+                from .facts import same_name
+                image['based_on']=next(mapping[name] for name in mapping if same_name(name)==same_name(image['based_on']))
             image.pop('derived_path',None)
         stored=ProductFacts.model_validate(snapshot)
         stored,image_metadata,image_reviews=prepare_images(stored,job,output/'.image-cache')

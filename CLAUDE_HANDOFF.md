@@ -117,6 +117,12 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
 - 렌더링: `ImageSection`·`GalleryPhoto`의 `staged`(생성 이미지만) → 템플릿에 인라인 스타일로 안내 문구. 실제 사진만 쓴 작업은 HTML이 바뀌지 않는다.
 - 화면: ① 출처·원본·도구 입력과 프롬프트 패널, ⑥ 원본·결과 나란히 보기와 항목별 체크.
 - 테스트 `tests/test_m8b.py`, 캡처 `tools/make_screenshots.py --m8b-only`. 검수 요청 `CODEX_REVIEW_M8B.md`.
+- 검수(`M8_B_REVIEW.md`, 재작업 필요) 반영, 회귀 테스트 `tests/test_m8b_review.py`, 재검수 요청 `CODEX_REVIEW_M8B_FIX.md`:
+  - `render()`가 작업 폴더(facts.json + manifest.json)에서 읽으면 `image_sources`를 manifest에 기록하고, AI 이미지(또는 `staged` 문서)가 있으면 `accept_review` 없이는 항상 DRAFT. M1 명령도 이 경로를 탄다. 내보내기는 출처 기록이 없는 AI 작업 결과를 거부.
+  - AI 생성 이미지는 대표 사진 대체에서 제외, 실제 사진 한 장 이상 필수. 이름 별칭(`./a`, `x/../a`)·하드 링크·같은 내용 복사본은 같은 파일로 보고 거부(`image_checks.check_distinct_files`).
+  - 도구 이름은 글자·숫자·공백·일부 기호만, 도메인·토큰 형태 거부(`facts.tool_name_ok`).
+  - ⑤ 미리보기에 AI 이미지·확인 여부 표시. 승인 작업은 `image_checks`가 있는 이미지의 `AI_IMAGE_UNCONFIRMED`를 다시 만들지 않는다(정책: 이미지가 같으면 확인 유지).
+  - 전경 마스크 면적 비교는 M8-B 범위에서 제외(배경 제거 모델 선택 설치 필요).
 
 ## 제품과 현재 흐름
 

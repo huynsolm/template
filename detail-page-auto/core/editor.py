@@ -150,7 +150,11 @@ def reassess_draft(job: Path, document: Document | None = None, evidence=None) -
     review+=repetition_reviews(document)
     manifest=read_json(job/'manifest.json')
     styles=theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))
-    return review+manifest.get('image_reviews',[])+styles['contrast_reviews']
+    # An accepted job keeps its per-image confirmations; its images cannot change inside the job.
+    confirmed={f"images.{check['index']}" for check in manifest.get('image_checks',[])}
+    images=[item for item in manifest.get('image_reviews',[])
+            if not (item.get('code')=='AI_IMAGE_UNCONFIRMED' and item.get('field_path') in confirmed)]
+    return review+images+styles['contrast_reviews']
 
 
 def save_draft(job: Path, data: dict, locked_sections: list[str], evidence=None) -> None:
@@ -234,10 +238,7 @@ def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     rendered=read_json(bundle/'manifest.json')
     review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']+rendered.get('copy_reviews',[])
     snapshot_bundle(bundle,draft_bytes,review)
-    from .image_checks import image_sources
     rendered=read_json(bundle/'manifest.json')
-    rendered['image_sources']=image_sources(ProductFacts.model_validate(read_json(provenance_path(job,'facts.json'))))
-    write_json(bundle/'manifest.json',rendered)
     if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
         manifest.update(review_accepted=False)
         manifest.pop('rendered_job',None)

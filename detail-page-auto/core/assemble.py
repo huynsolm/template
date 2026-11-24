@@ -62,7 +62,8 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
         sid=f'{kind}-1'
         sections.append({'id':sid,'type':kind,**values})
         return sid
-    hero=next((i for i in facts.images if i.role=='hero'),facts.images[0] if facts.images else None)
+    # A fully generated picture is never the representative photo (M8-B).
+    hero=next((i for i in facts.images if i.role=='hero'),next((i for i in facts.images if i.source!='ai_generated'),None))
     if hero is None: raise ValueError('images: hero or first image required')
     add('hero',headline=copy.hero.headline,subcopy=copy.hero.subcopy,image=hero.effective_path)
     check(copy.hero,'hero-1','hero')

@@ -105,6 +105,12 @@ CLI의 가져오기 결과도 확인 전 초안입니다. 가격·사진을 입�
 
 명령줄 승인: `cli.py accept --job JOB --confirm-image image-5=shape,color,composition --confirm-image image-1=no_product` (이미지마다 모든 항목 필요). AI 이미지가 있는 작업은 `ingest --accept-review`로 승인할 수 없습니다.
 
+- AI 생성 이미지는 대표 사진으로 쓰이지 않습니다. 실제 사진(또는 배경만 바꾼 사진)이 한 장 이상 있어야 합니다.
+- 같은 파일(이름만 다르거나 링크·같은 내용의 복사본)을 실제 사진과 AI 이미지로 함께 올릴 수 없습니다.
+- 작업의 모든 렌더링(③ 수집 렌더링, ⑤ 미리보기, ⑥ 승인)과 ZIP에 `image_sources`가 들어갑니다. ⑤에는 AI 이미지와 확인 여부가 표시됩니다.
+- 기존 M1 명령(`cli.py --input … --images …`)으로 AI 이미지가 든 작업 초안을 렌더링하면 항상 DRAFT 파일명으로 나옵니다. 승인은 ⑥ 또는 `accept --confirm-image`로만 합니다.
+- 승인한 작업은 이미지가 바뀌지 않는 한 이미지별 확인이 유지됩니다(작업 안에서 이미지는 바뀌지 않으며, 이미지를 바꾸려면 새 작업을 만듭니다).
+
 | ⑥ 원본과 나란히 확인 | 연출 이미지 표시 |
 |---|---|
 | ![approval](docs/images/m8b-approval.png) | ![staged](docs/images/m8b-staged.png) |

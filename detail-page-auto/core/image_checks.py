@@ -116,3 +116,42 @@ def confirmed_images(items: list[dict], confirmations: dict | None) -> list[dict
     return [{'id': item['id'], 'index': item['index'], 'source': item['source'], 'path': item['source_path'],
              **({'based_on': item['based_on']} if item['based_on'] else {}), 'generator': item['generator'],
              'checks': [key for key, _ in item['checks']], 'confirmed_at': at} for item in items]
+
+
+def check_distinct_files(facts, paths: dict) -> None:
+    """An AI image must be a different file from every real photo, whatever name points at it.
+
+    ``paths`` maps each image name to the validated file. Names, links and byte-identical copies
+    of one file are the same picture, so they cannot be both a photo and its AI version."""
+    import os
+
+    def identity(name):
+        path = Path(paths[name])
+        return path.resolve(), os.stat(path).st_ino, _digest(path)
+
+    photos = [identity(image.path) for image in facts.images if image.source is None]
+    for index, image in enumerate(facts.images, 1):
+        if image.source is None:
+            continue
+        mine = identity(image.path)
+        if any(mine[0] == other[0] or mine[1] == other[1] or mine[2] == other[2] for other in photos):
+            raise ValueError(f'사진 {index}: 실제 사진과 같은 파일입니다. AI로 만든 결과 파일을 따로 올려 주세요.')
+
+
+def sources_near(image_dir: Path, document) -> tuple[list[dict] | None, bool]:
+    """Image sources of the job a render reads from, and whether it holds AI-made images.
+
+    Every job render (ingest, preview, approval, and the M1 command pointed at a job) reads its
+    images from the job folder, which holds ``facts.json``. A document with a generated picture
+    counts as AI even without the job files."""
+    from .facts import ProductFacts
+    staged = any(getattr(section, 'staged', None) or any(getattr(item, 'staged', None) for item in getattr(section, 'items', []) or [] if not isinstance(item, str))
+                 for section in document.sections)
+    facts_path = Path(image_dir) / 'facts.json'
+    if not facts_path.is_file() or not (Path(image_dir) / 'manifest.json').is_file():  # not a job folder
+        return None, staged
+    try:
+        facts = ProductFacts.model_validate_json(facts_path.read_text(encoding='utf-8'))
+    except ValueError:
+        return None, staged
+    return image_sources(facts), staged or any(image.source for image in facts.images)
