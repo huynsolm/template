@@ -138,20 +138,48 @@ def check_distinct_files(facts, paths: dict) -> None:
             raise ValueError(f'사진 {index}: 실제 사진과 같은 파일입니다. AI로 만든 결과 파일을 따로 올려 주세요.')
 
 
-def sources_near(image_dir: Path, document) -> tuple[list[dict] | None, bool]:
-    """Image sources of the job a render reads from, and whether it holds AI-made images.
+def sources_near(image_dir: Path, document) -> dict:
+    """What a render knows about its images.
 
     Every job render (ingest, preview, approval, and the M1 command pointed at a job) reads its
-    images from the job folder, which holds ``facts.json``. A document with a generated picture
-    counts as AI even without the job files."""
+    images from the job folder (``facts.json`` + ``manifest.json``). Returns ``sources`` (None when
+    unknown), ``ai`` (a document with a generated picture counts as AI even without job files) and
+    ``checks``: the job's per-image confirmations that still match its images."""
+    import json
     from .facts import ProductFacts
     staged = any(getattr(section, 'staged', None) or any(getattr(item, 'staged', None) for item in getattr(section, 'items', []) or [] if not isinstance(item, str))
                  for section in document.sections)
-    facts_path = Path(image_dir) / 'facts.json'
-    if not facts_path.is_file() or not (Path(image_dir) / 'manifest.json').is_file():  # not a job folder
-        return None, staged
+    unknown = {'sources': None, 'ai': staged, 'checks': []}
+    folder = Path(image_dir)
+    if not (folder / 'facts.json').is_file() or not (folder / 'manifest.json').is_file():  # not a job folder
+        return unknown
     try:
-        facts = ProductFacts.model_validate_json(facts_path.read_text(encoding='utf-8'))
+        facts = ProductFacts.model_validate_json((folder / 'facts.json').read_text(encoding='utf-8'))
+        manifest = json.loads((folder / 'manifest.json').read_text(encoding='utf-8'))
     except ValueError:
-        return None, staged
-    return image_sources(facts), staged or any(image.source for image in facts.images)
+        return unknown
+    ai = {f'image-{index}': image for index, image in enumerate(facts.images) if image.source}
+    # A kept confirmation applies only to the same image (same index, file and source).
+    checks = [check for check in manifest.get('image_checks', []) if isinstance(check, dict)
+              and check.get('id') in ai and check.get('path') == ai[check['id']].path
+              and check.get('source') == ai[check['id']].source]
+    return {'sources': image_sources(facts), 'ai': staged or bool(ai), 'checks': checks}
+
+
+def export_block(bundle: Path, manifest: dict) -> str | None:
+    """Why a render may not be exported for lack of image provenance, or None."""
+    if manifest.get('image_sources') is not None:
+        return None
+    page = Path(bundle) / 'page.html'
+    known_ai = bool(manifest.get('ai_images')) or (page.is_file() and 'staged-note' in page.read_text(encoding='utf-8'))
+    job_facts = Path(bundle).parent.parent / 'facts.json'
+    if not known_ai and job_facts.is_file():
+        from .facts import ProductFacts
+        try:
+            known_ai = any(image.source for image in ProductFacts.model_validate_json(job_facts.read_text(encoding='utf-8')).images)
+        except ValueError:
+            known_ai = False
+    if known_ai:
+        return ('이 결과에는 AI로 만든 이미지가 있지만 이미지 출처 기록이 없습니다. 작업 화면에서 ⑤ 다시 미리보기하거나 '
+                '⑥에서 승인한 결과를 내보내세요(M1 명령으로 작업 폴더 밖 사진을 렌더링한 결과는 내보낼 수 없습니다).')
+    return None

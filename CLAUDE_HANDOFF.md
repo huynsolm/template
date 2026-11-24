@@ -123,6 +123,10 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - 도구 이름은 글자·숫자·공백·일부 기호만, 도메인·토큰 형태 거부(`facts.tool_name_ok`).
   - ⑤ 미리보기에 AI 이미지·확인 여부 표시. 승인 작업은 `image_checks`가 있는 이미지의 `AI_IMAGE_UNCONFIRMED`를 다시 만들지 않는다(정책: 이미지가 같으면 확인 유지).
   - 전경 마스크 면적 비교는 M8-B 범위에서 제외(배경 제거 모델 선택 설치 필요).
+- 재검수(`M8_B_REVIEW_2.md`) 반영, 재검수 요청 `CODEX_REVIEW_M8B_FIX2.md`:
+  - `image_checks.sources_near`가 `{'sources','ai','checks'}`를 돌려준다. render manifest에 `ai_images`·`image_sources_known`·유지된 `image_checks`(같은 번호·파일·출처만) 기록.
+  - `image_checks.export_block`: AI 이미지가 알려진 결과(`ai_images`, 연출 표시, 작업 facts)에 출처가 없으면 내보내기 거부.
+  - ⑤는 이미지별로 확인 완료/확인 전을 나눠 표시. 도구 이름에 `·` 허용(예: DALL·E 3).
 
 ## 제품과 현재 흐름
 

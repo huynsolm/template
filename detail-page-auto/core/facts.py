@@ -28,7 +28,7 @@ class Fact(Model):
 AI_SOURCES = ('ai_edited', 'ai_generated')
 AI_GENERATED_ROLES = ('lifestyle',)  # fully generated images: mood/scene pictures only
 # A tool name only: letters, digits, spaces and a little punctuation; no domains, no token-like runs.
-TOOL_NAME = re.compile(r'[0-9A-Za-z가-힣 ()+\-_.]{1,40}')
+TOOL_NAME = re.compile(r'[0-9A-Za-z가-힣 ()+\-_.·]{1,40}')
 DOMAIN_LIKE = re.compile(r'[0-9A-Za-z-]\.[A-Za-z]{2,}')
 TOKEN_LIKE = re.compile(r'(AIza|sk-|ghp_|gho_|github_pat_|xox[abp]-|glpat-|ya29\.)|[0-9A-Za-z_\-]{20,}')
 
@@ -72,7 +72,7 @@ class ImageRef(Model):
         if not self.generator:
             raise ValueError('AI로 만든 이미지는 사용한 도구 이름(예: ChatGPT, Gemini)을 적어 주세요.')
         if not tool_name_ok(self.generator):
-            raise ValueError('생성 도구에는 이름만 적어 주세요(주소·계정 정보 불가).')
+            raise ValueError('생성 도구에는 이름만 적어 주세요. 글자·숫자·공백과 ( ) + - _ . · 만 쓸 수 있고, 주소·계정·키 형태는 받지 않습니다(예: ChatGPT, DALL·E 3, Gemini 2.5).')
         if self.source == 'ai_edited' and not self.based_on:
             raise ValueError('AI로 배경을 바꾼 사진은 원본 사진을 선택해야 합니다.')
         if self.source == 'ai_generated':

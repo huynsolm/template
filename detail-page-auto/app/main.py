@@ -634,12 +634,16 @@ def display_bundle(bundle):
         else: st.error('검수 필요: 근거·수치·광고 표현을 확인해 주세요.')
     from core.image_checks import SOURCE_NAMES
     ai=[item for item in manifest.get('image_sources',[]) if item['source']!='photo']
-    if ai:
-        listed=', '.join(f"사진 {item['index']+1} {SOURCE_NAMES[item['source']]}({item.get('generator','')})" for item in ai)
-        if manifest.get('image_checks'):
-            st.info('AI로 만든 이미지 · 이미지별 확인 완료: '+listed)
-        else:
-            st.warning('AI로 만든 이미지 '+str(len(ai))+'장 · 확인 전: '+listed+'. ⑥ 승인에서 원본과 나란히 보고 이미지마다 확인해야 합니다.')
+    confirmed={check['index'] for check in manifest.get('image_checks',[])}
+    name=lambda item:f"사진 {item['index']+1} {SOURCE_NAMES[item['source']]}({item.get('generator','')})"
+    done=[name(item) for item in ai if item['index'] in confirmed]
+    pending=[name(item) for item in ai if item['index'] not in confirmed]
+    if done:
+        st.info('AI로 만든 이미지 · 이미지별 확인 완료: '+', '.join(done)+(' (페이지 승인은 별도)' if not manifest.get('review_accepted') else ''))
+    if pending:
+        st.warning('AI로 만든 이미지 '+str(len(pending))+'장 · 확인 전: '+', '.join(pending)+'. ⑥ 승인에서 원본과 나란히 보고 이미지마다 확인해야 합니다.')
+    if manifest.get('ai_images') and manifest.get('image_sources') is None:
+        st.error('이 결과에는 AI 이미지의 출처 기록이 없어 내보낼 수 없습니다. 다시 미리보기하세요.')
     for page in manifest['pages']: st.image(str(bundle/page['file']),width='stretch')
     return manifest
 

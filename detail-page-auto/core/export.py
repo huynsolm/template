@@ -261,12 +261,11 @@ def export_bundle(bundle: Path, profile: str | Profile, output_dir: Path | None 
     if isinstance(profile, str):
         profile = load_profile(profile, profiles_dir)
     manifest = json.loads((bundle / 'manifest.json').read_text(encoding='utf-8'))
-    # M8-B: a render of a job with AI-made images must carry where each image came from.
-    job_facts = bundle.parent.parent / 'facts.json'
-    if 'image_sources' not in manifest and job_facts.is_file() and '"source"' in job_facts.read_text(encoding='utf-8'):
-        from .facts import ProductFacts
-        if any(image.source for image in ProductFacts.model_validate_json(job_facts.read_text(encoding='utf-8')).images):
-            raise ValueError('이 결과에는 이미지 출처 기록이 없습니다. ⑤에서 다시 미리보기하거나 승인한 결과를 내보내세요.')
+    # M8-B: a render known to hold AI-made images must carry where each image came from.
+    from .image_checks import export_block
+    blocked = export_block(bundle, manifest)
+    if blocked:
+        raise ValueError(blocked)
     values = profile.effective()
     checks = []
     if profile.status != 'verified':

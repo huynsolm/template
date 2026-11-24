@@ -130,8 +130,8 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
     needs_review = bool(needs_review or styles['contrast_reviews'])
     # M8-B: AI-made images stay a draft until a person confirms them through approval.
     from .image_checks import sources_near
-    image_sources, has_ai_images = sources_near(Path(image_dir), document)
-    needs_review = bool(needs_review or (has_ai_images and not accept_review))
+    provenance = sources_near(Path(image_dir), document)
+    needs_review = bool(needs_review or (provenance['ai'] and not accept_review))
     started = time.perf_counter()
     images = collect_images(document, image_dir)
     output_dir = Path(output_dir)
@@ -218,7 +218,9 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'copy_metrics': metrics, 'copy_reviews': reviews_copy,
                     'copy_rules_enforced': enforce_copy_rules, 'copy_measure_version': MEASURE_VERSION,
-                    **({'image_sources': image_sources} if image_sources is not None else {}),
+                    **({'image_sources': provenance['sources']} if provenance['sources'] is not None else {}),
+                    **({'ai_images': True, 'image_sources_known': provenance['sources'] is not None} if provenance['ai'] else {}),
+                    **({'image_checks': provenance['checks']} if provenance['checks'] else {}),
                     **({} if enforce_copy_rules else {'copy_reviews_informational': measured}),
                     'font_loaded': geometry['font_loaded'], 'network_requests': geometry['network_requests'],
                     'versions': {'python': platform.python_version(), 'chromium': geometry['browser_version'],
