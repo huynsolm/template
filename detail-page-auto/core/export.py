@@ -369,6 +369,12 @@ def build_export_zip(folder: Path) -> tuple[str, bytes]:
     for path in (bundle / 'assets').rglob('*'):
         if path.is_file():
             entries[str(path.relative_to(bundle))] = path
+    # M8-C: the PDF made from this render travels with every ZIP that records it.
+    if source.get('pdf'):
+        pdf = bundle / source['pdf']['file']
+        if Path(source['pdf']['file']).name != source['pdf']['file'] or not pdf.is_file():
+            raise ValueError('manifest records a PDF that is not in the render: ' + source['pdf']['file'])
+        entries[pdf.name] = pdf
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(entries):

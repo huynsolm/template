@@ -321,6 +321,38 @@ def make_m8b_screenshots(images: Path, output: Path):
     return {'job':str(job),'images':[str(images/name) for name in ('m8b-approval.png','m8b-staged.png')]}
 
 
+CANVA_FONTS = {'modern': 'Pretendard(가변 글꼴 — PDF 안에서는 Type3 글꼴)', 'natural': '고운바탕(제목) + Pretendard(본문)',
+               'classic': 'Noto Sans CJK'}
+
+
+def write_canva_check(samples: Path, target: Path) -> None:
+    """docs/canva-check.md with the page counts and sizes read from the sample PDFs themselves."""
+    from pypdf import PdfReader
+    rows = []
+    for theme in ('modern', 'natural', 'classic'):
+        reader = PdfReader(samples/f'canva-sample-{theme}.pdf')
+        sizes = ' / '.join(f'{float(p.mediabox.width):.0f}×{float(p.mediabox.height):.0f}' for p in reader.pages)
+        rows.append(f'| {theme} | {len(reader.pages)}쪽 | {sizes} | `docs/samples/canva-sample-{theme}.pdf` | {CANVA_FONTS[theme]} |')
+    columns = '| 테마 | 쪽 수 | 쪽 크기 | 글자 편집 | 글꼴 대체 | 정렬·줄바꿈 | 사진·배경 분리 | 캡처 경로 | 비고 |'
+    target.write_text('\n'.join([
+        '# 캔바(Canva) 편집 가능 여부 확인 (M8-C)', '',
+        '캔바는 외부 서비스라 자동 테스트로 확인할 수 없습니다. 아래 **가상 샘플 PDF**를 직접 올려 보고 결과를 적습니다. 실제 상품 자료는 쓰지 않습니다.',
+        '결과를 받기 전까지 README의 "캔바에서 수정할 때 알아 둘 점"은 **확인 예정**으로 둡니다.', '',
+        '## 샘플 원본 (PDF에서 읽은 값, 단위 pt · 너비 645pt = 860px)',
+        '| 테마 | 원본 쪽 수 | 쪽별 크기(너비×높이) | 파일 | 글꼴 |', '|---|---|---|---|---|', *rows, '',
+        '다시 만들기: `.venv/bin/python tools/make_screenshots.py --m8c-only` (이 표도 함께 다시 씁니다)', '',
+        '## 확인 순서',
+        '1. 캔바 → 업로드 → PDF 올리기 → 열기("PDF 편집"으로 가져오기)',
+        '2. 테마마다 아래 표를 채웁니다. 계정 정보는 적지 않습니다. 캡처는 저장한 파일 이름이나 위치만 적습니다.', '',
+        '## 결과 기록',
+        '각 칸에 예: "같음(3쪽)", "글자 상자로 선택·수정됨", "Pretendard → Noto Sans KR로 바뀜", "가운데 정렬 유지", "사진 따로 선택됨".', '',
+        columns, '|' + '---|' * 9,
+        *[f'| {theme} | (원본 {n}) | | | | | | | |' for theme, n in
+          (('modern', rows[0].split('|')[2].strip()), ('natural', rows[1].split('|')[2].strip()), ('classic', rows[2].split('|')[2].strip()))],
+        '', '- 확인 날짜:', '- 기타 관찰:', '',
+    ]), encoding='utf-8')
+
+
 def make_m8c_screenshots(images: Path, output: Path, samples: Path):
     """M8-C: colour candidates on ①, the first PDF page next to the first JPG, and virtual sample PDFs for the Canva check."""
     import shutil
@@ -347,6 +379,8 @@ def make_m8c_screenshots(images: Path, output: Path, samples: Path):
                 pair = Image.new('RGB', (pdf_page.width + jpg_page.width + 24, height), 'white')
                 pair.paste(jpg_page, (0, 0)); pair.paste(pdf_page.convert('RGB'), (jpg_page.width + 24, 0))
                 pair.save(images/'m8c-pdf-vs-jpg.png')
+    if samples.resolve() == (ROOT/'docs/samples').resolve():
+        write_canva_check(samples, ROOT/'docs/canva-check.md')
     with socket.socket() as listener:
         listener.bind(('127.0.0.1',0))
         port = listener.getsockname()[1]

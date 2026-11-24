@@ -368,7 +368,10 @@ def build_zip(bundle: Path) -> bytes:
         names.add(page['file'])
         if page.get('png'): names.add(page['png'])
     names.update(str(p.relative_to(bundle)) for p in (bundle/'assets').rglob('*') if p.is_file())
-    if manifest.get('pdf'): names.add(manifest['pdf']['file'])  # M8-C, when made
+    if manifest.get('pdf'):  # M8-C, when made; the recorded file must be there
+        if Path(manifest['pdf']['file']).name!=manifest['pdf']['file'] or not (bundle/manifest['pdf']['file']).is_file():
+            raise ValueError('manifest records a PDF that is not in the render: '+manifest['pdf']['file'])
+        names.add(manifest['pdf']['file'])
     output=io.BytesIO()
     with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(names):

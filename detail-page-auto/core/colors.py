@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-VERSION = 'colors-1'
+VERSION = 'colors-2'
 SAMPLE_EDGE = 240        # photos are reduced to this size before counting colours
 EDGE_BAND = 0.06         # share of width/height treated as background evidence
 BACKGROUND_DISTANCE = 48 # RGB distance within which a pixel counts as background
@@ -32,19 +32,24 @@ def _neutral(rgb) -> bool:
 
 
 def _pixels(path: Path) -> list[tuple]:
-    """Foreground pixels of one photo: the edge-band colours are taken as background."""
+    """Foreground pixels of one photo.
+
+    With transparency (alpha channel or a transparent palette entry), the opaque pixels are the
+    foreground and the colour hidden under fully transparent pixels is never read: RGBA is resized
+    with premultiplied alpha, and no background is estimated. Without transparency, the most
+    common colours of the edge band are taken as background and left out."""
     with Image.open(path) as image:
         image = ImageOps.exif_transpose(image)
-        alpha = image.getchannel('A') if 'A' in image.getbands() else None
-        rgb = image.convert('RGB')
-        rgb.thumbnail((SAMPLE_EDGE, SAMPLE_EDGE), Image.Resampling.BOX)
-        if alpha is not None:
-            alpha = alpha.resize(rgb.size, Image.Resampling.BOX)
-    width, height = rgb.size
+        transparent = image.mode in ('RGBA', 'LA', 'PA') or 'transparency' in image.info
+        image = image.convert('RGBA' if transparent else 'RGB')
+        image.thumbnail((SAMPLE_EDGE, SAMPLE_EDGE), Image.Resampling.BOX)
+    if transparent:
+        raw = image.tobytes()
+        return [tuple(raw[i:i + 3]) for i in range(0, len(raw), 4) if raw[i + 3] > 128]
+    width, height = image.size
     band_x, band_y = max(1, int(width * EDGE_BAND)), max(1, int(height * EDGE_BAND))
-    raw = rgb.tobytes()
+    raw = image.tobytes()
     data = [tuple(raw[i:i + 3]) for i in range(0, len(raw), 3)]
-    mask = list(alpha.tobytes()) if alpha is not None else None
     edge = [data[y * width + x] for y in range(height) for x in range(width)
             if x < band_x or x >= width - band_x or y < band_y or y >= height - band_y]
     counts = {}
@@ -52,8 +57,7 @@ def _pixels(path: Path) -> list[tuple]:
         key = tuple(v // 16 * 16 + 8 for v in color)
         counts[key] = counts.get(key, 0) + 1
     backgrounds = [color for color, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3] if n >= len(edge) * 0.1]
-    return [color for i, color in enumerate(data)
-            if (mask is None or mask[i] > 128) and not any(_distance(color, bg) < BACKGROUND_DISTANCE for bg in backgrounds)]
+    return [color for color in data if not any(_distance(color, bg) < BACKGROUND_DISTANCE for bg in backgrounds)]
 
 
 def suggest_colors(paths: list[Path], themes: tuple[str, ...] | None = None) -> list[dict]:

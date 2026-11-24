@@ -31,6 +31,8 @@ SPLIT_JS = r'''pages => {
 }''' % PAGE_SLACK_PX
 
 TEXT_JS = r'''() => {
+  // Every visible text run, with the document position used to place it on a PDF page.
+  // Visibility includes ancestors (display:none, visibility:hidden, content-visibility).
   const out = [];
   for (const section of document.querySelectorAll('main > section')) {
     const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT);
@@ -38,17 +40,89 @@ TEXT_JS = r'''() => {
       const node = walker.currentNode;
       const text = node.textContent.trim();
       if (!text) continue;
-      const style = getComputedStyle(node.parentElement);
-      if (style.display === 'none' || style.visibility === 'hidden') continue;
-      out.push({section_id: section.dataset.section, text});
+      const element = node.parentElement;
+      if (!element.checkVisibility({checkVisibilityCSS: true})) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
+      if (!rects.length) continue;
+      out.push({section_id: section.dataset.section, text,
+                top: Math.min(...rects.map(r => r.top)) + window.scrollY,
+                bottom: Math.max(...rects.map(r => r.bottom)) + window.scrollY});
     }
   }
   return out;
 }'''
 
+# Variation selectors only choose how a character is drawn (e.g. U+FE0F emoji style); PDF text
+# extraction may drop them. They are ignored and counted; every other character must be present.
+PRESENTATION = re.compile('[︀-️\U000e0100-\U000e01ef]')
+
 
 def _squash(text: str) -> str:
-    return re.sub(r'[\s­]+', '', text).casefold()
+    return PRESENTATION.sub('', re.sub(r'[\s­]+', '', text)).casefold()
+
+
+POSITION_TOLERANCE_PT = 4
+
+
+def page_characters(page) -> tuple[str, list[float]]:
+    """A page's text as one squashed string, with the baseline height (pt from the bottom) of each character."""
+    chars, heights = [], []
+    def visit(text, cm, tm, font, size):
+        y = tm[4] * cm[1] + tm[5] * cm[3] + cm[5]
+        for char in _squash(text):
+            chars.append(char); heights.append(y)
+    page.extract_text(visitor_text=visit)
+    return ''.join(chars), heights
+
+
+def match_runs(runs: list[dict], pdf_pages: list, pages: list[dict]) -> list[dict]:
+    """Runs not found in the PDF where they are drawn.
+
+    Each run is looked for on its own page, only among characters whose baselines lie within the
+    run's own box (so a repeated text elsewhere does not count), longest text first. A matched
+    span is used up, so two occurrences need two occurrences in the PDF and a short text inside a
+    longer one cannot borrow its letters."""
+    texts, heights = [], []
+    for page in pdf_pages:
+        text, height = page_characters(page)
+        texts.append(text); heights.append(height)
+    missing = []
+    def page_of(run):
+        for index, page in enumerate(pages):
+            if page['top'] <= run['top'] < page['bottom']:
+                return index
+        return len(pages) - 1
+    for run in sorted(runs, key=lambda r: (-len(_squash(r['text'])), r['top'])):
+        needle = _squash(run['text'])
+        if not needle:
+            continue
+        index = page_of(run)
+        page_height = float(pdf_pages[index].mediabox.height)
+        high = page_height - (run['top'] - pages[index]['top']) * PX_TO_PT + POSITION_TOLERANCE_PT
+        low = page_height - (run['bottom'] - pages[index]['top']) * PX_TO_PT - POSITION_TOLERANCE_PT
+        text, height = texts[index], heights[index]
+        found, start = -1, text.find(needle)
+        while start >= 0:
+            if all(low <= height[i] <= high for i in range(start, start + len(needle))):
+                found = start
+                break
+            start = text.find(needle, start + 1)
+        if found < 0:
+            missing.append(run)
+            continue
+        texts[index] = text[:found] + '\x00' * len(needle) + text[found + len(needle):]
+    return sorted(missing, key=lambda r: r['top'])
+
+
+def ignored_presentation(runs: list[dict], page_texts: list[str]) -> dict:
+    wanted, got = {}, {}
+    for text, counter in [(r['text'], wanted) for r in runs] + [(t, got) for t in page_texts]:
+        for char in PRESENTATION.findall(text):
+            key = f'U+{ord(char):04X}'
+            counter[key] = counter.get(key, 0) + 1
+    return {key: count - got.get(key, 0) for key, count in sorted(wanted.items()) if count > got.get(key, 0)}
 
 
 def _fonts(obj, seen=None) -> set[str]:
@@ -107,8 +181,8 @@ def make_pdf(bundle: Path) -> Path:
         reader = PdfReader(temporary)
         if len(reader.pages) != len(manifest['pages']):
             raise ValueError(f"PDF 쪽 수({len(reader.pages)})가 이미지 장 수({len(manifest['pages'])})와 다릅니다.")
-        extracted = _squash(''.join(page.extract_text() or '' for page in reader.pages))
-        missing = [run for run in runs if _squash(run['text']) not in extracted]
+        page_texts = [page.extract_text() or '' for page in reader.pages]
+        missing = match_runs(runs, reader.pages, manifest['pages'])
         if missing:
             where = ', '.join(f"{run['section_id']}: {run['text'][:30]}" for run in missing[:5])
             raise ValueError(f'PDF에서 글자 {len(missing)}곳이 빠졌습니다(글자 보존 실패). 위치: {where}')
@@ -119,7 +193,9 @@ def make_pdf(bundle: Path) -> Path:
         raise
     temporary.replace(target)
     manifest['pdf'] = {'file': target.name, 'pages': len(sizes), 'page_sizes_pt': sizes, 'fonts': fonts,
-                       'text_check': {'runs': len(runs), 'missing': 0}, 'network_requests': network,
+                       'text_check': {'runs': len(runs), 'missing': 0, 'matching': 'position-occurrence',
+                                      'ignored_presentation': ignored_presentation(runs, page_texts)},
+                       'network_requests': network,
                        'elapsed_seconds': round(time.perf_counter() - started, 3)}
     (bundle / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return target

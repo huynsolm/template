@@ -105,11 +105,18 @@ def test_pdf_pages_match_the_jpg_pages_and_keep_all_text(tmp_path, theme):
 
 
 def test_missing_text_fails_with_its_location_and_writes_nothing(tmp_path, monkeypatch):
-    import pypdf
+    import core.pdf
     bundle = rich_bundle(tmp_path, 'modern')
-    original = pypdf.PageObject.extract_text
-    # As if a heading had been turned into a picture: its words never reach the PDF text.
-    monkeypatch.setattr(pypdf.PageObject, 'extract_text', lambda self, *a, **k: original(self, *a, **k).replace('설비 배치 전에', ''))
+    original = core.pdf.page_characters
+
+    def without_heading(page):
+        # As if a heading had been turned into a picture: its words never reach the PDF text.
+        text, heights = original(page)
+        cut = text.find('설비배치전에')
+        if cut < 0:
+            return text, heights
+        return text[:cut] + text[cut + 6:], heights[:cut] + heights[cut + 6:]
+    monkeypatch.setattr(core.pdf, 'page_characters', without_heading)
     with pytest.raises(ValueError, match='글자 보존 실패.*pain-1'):
         make_pdf(bundle)
     assert not list(bundle.glob('*.pdf')) and not list(bundle.glob('*.tmp')) and 'pdf' not in read_json(bundle / 'manifest.json')

@@ -139,6 +139,13 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
 - 화면: ①·⑤ 색 후보(견본 이미지 + "이 색 사용"), ⑦ PDF 만들기·다운로드. CLI `pdf --job`.
 - 캔바 확인 절차 `detail-page-auto/docs/canva-check.md`, 샘플 `docs/samples/canva-sample-{modern,natural,classic}.pdf`(가상). 결과 받으면 README "캔바에서 수정할 때 알아 둘 점" 갱신.
 - 테스트 `tests/test_m8c.py`, 캡처 `tools/make_screenshots.py --m8c-only`(PDF 쪽 캡처는 있으면 `pdftoppm` 사용, 앱 의존성 아님). 검수 요청 `CODEX_REVIEW_M8C.md`.
+- 검수(`M8_C_REVIEW.md`, 재작업 필요) 반영, 회귀 테스트 `tests/test_m8c_review.py`, 재검수 요청 `CODEX_REVIEW_M8C_FIX.md`:
+  - `pdf.match_runs`: 문구마다 그려진 쪽의 글자 높이 범위(±4pt) 안에서만 찾고, 긴 문구부터 찾은 글자를 소모(중복·포함 문구 미탐 방지). 위치는 `page_characters`(pypdf visitor)로 얻는다.
+  - `TEXT_JS`: `checkVisibility({checkVisibilityCSS:true})`로 조상 숨김 반영, 크기 없는 텍스트 제외.
+  - 이체 선택자(U+FE00–FE0F, U+E0100–E01EF)만 무시하고 `ignored_presentation`에 기록.
+  - 색: 투명도가 있으면 불투명 픽셀만(RGBA 사전곱 축소), 배경 추정 안 함. `colors.VERSION='colors-2'`.
+  - 판매처 프로필 ZIP에도 PDF 포함, 기록된 PDF 파일이 없으면 두 ZIP 모두 거부.
+  - `docs/canva-check.md`는 `tools/make_screenshots.write_canva_check`가 샘플 PDF에서 쪽 수·크기를 읽어 만든다.
 
 ## 제품과 현재 흐름
 
