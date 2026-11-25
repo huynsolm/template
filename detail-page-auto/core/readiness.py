@@ -57,9 +57,11 @@ def check_readiness(facts, images, settings=None) -> list[dict]:
 
     if not any(photo.get('role') == 'hero' for photo in photos):
         add('필수','NO_HERO','대표(hero) 사진을 지정하세요.','images')
-    for key, code, label in [('name','EMPTY_NAME','상품명'),('price','EMPTY_PRICE','가격')]:
-        if not str(product.get(key) or '').strip():
-            add('필수',code,f'{label}을 입력하세요.',f'product.{key}')
+    if not str(product.get('name') or '').strip():
+        add('필수','EMPTY_NAME','상품명을 입력하세요.','product.name')
+    if not str(product.get('price') or '').strip():
+        # M9: price is optional; an empty price is simply left off the page.
+        add('권장','EMPTY_PRICE','가격이 비어 있어 상세페이지에 가격 칸이 나오지 않습니다. 판매 상태를 보여 주려면 그대로 적어 주세요.','product.price')
     if len(rows) < 8:
         add('권장','FEW_FACTS','상품 사실을 8개 이상 입력하면 문구를 풍부하게 구성할 수 있습니다.','facts')
     if sum(row.get('kind') == 'feature' for row in rows) < 3:

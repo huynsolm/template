@@ -38,7 +38,7 @@ def _seller_check(job, document):
     if document.product!=facts.product:
         raise ValueError('product: seller-owned fields must match facts.json')
     expected = seller_sections(facts)
-    for kind in ('review', 'spec', 'notice', 'stats', 'targets', 'structure', 'gallery', 'image'):
+    for kind in ('review', 'spec', 'notice', 'stats', 'targets', 'structure', 'gallery', 'image', 'cases'):
         actual = [section.model_dump(exclude_none=True) for section in document.sections if section.type == kind]
         if actual != ([expected[kind]] if kind in expected else []):
             raise ValueError(kind+': seller-owned section must match facts.json')
@@ -224,7 +224,7 @@ def snapshot_bundle(bundle: Path, draft_bytes: bytes, review: list[dict]) -> Non
     write_json(bundle/'manifest.json',manifest)
 
 
-def preview_job(job: Path, theme=None, brand_color=None) -> Path:
+def preview_job(job: Path, theme=None, brand_color=None, design_version=None) -> Path:
     from .render import render
     job=Path(job)
     draft_bytes=(job/'draft.json').read_bytes()
@@ -234,16 +234,20 @@ def preview_job(job: Path, theme=None, brand_color=None) -> Path:
     theme=theme if theme is not None else manifest.get('theme','classic')
     previous_brand = effective_brand(manifest,document.product.brand_color)
     brand = brand_color if brand_color is not None else previous_brand
-    bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme,brand_color=brand)
+    from .render import job_design_version
+    previous_version=job_design_version(manifest)
+    version=design_version if design_version is not None else previous_version
+    bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme,brand_color=brand,design_version=version)
     rendered=read_json(bundle/'manifest.json')
     review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']+rendered.get('copy_reviews',[])
     snapshot_bundle(bundle,draft_bytes,review)
     rendered=read_json(bundle/'manifest.json')
-    if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy']:
+    if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy'] or previous_version!=version:
         manifest.update(review_accepted=False)
         manifest.pop('rendered_job',None)
     manifest.update(contrast_metadata(rendered))
     manifest.update(theme=theme,brand_color=brand,needs_review=bool(review))
+    if version!=1 or 'design_version' in manifest: manifest['design_version']=version
     write_json(job/'review.json',review)
     write_json(job/'manifest.json',manifest)
     write_json(job/'preview.json',{'bundle':str(bundle.relative_to(job))})
@@ -287,11 +291,14 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
             return False
         theme = load_theme(current.get('theme','classic'))
         # M8-A themes must have been measured by the current rules (older previews are rendered again).
-        if theme.type is not None and snapshot.get('copy_measure_version') != MEASURE_VERSION:
+        from .render import job_design_version, expected_contrast_policy
+        if (theme.type is not None or job_design_version(current)==2) and snapshot.get('copy_measure_version') != MEASURE_VERSION:
+            return False
+        if job_design_version(snapshot)!=job_design_version(current):
             return False
         return (snapshot.get('draft_sha256')==digest
                 and snapshot.get('theme','classic')==current.get('theme','classic')
-                and snapshot.get('contrast_policy')==theme.contrast_policy)
+                and snapshot.get('contrast_policy')==expected_contrast_policy(current.get('theme','classic'),job_design_version(current)))
     except (OSError,ValueError,KeyError):
         return False
 
@@ -337,6 +344,9 @@ def gallery_thumbnail(job: Path, theme: str) -> Path:
     digest = hashlib.sha256(draft)
     digest.update(theme.encode())
     digest.update(brand.lower().encode())
+    from .render import job_design_version
+    version = job_design_version(read_json(job/'manifest.json'))
+    if version != 1: digest.update(f'design-v{version}'.encode())
     for source in collect_images(document,job).values():
         with source.open('rb') as stream:
             digest.update(hashlib.file_digest(stream, 'sha256').digest())
@@ -344,7 +354,7 @@ def gallery_thumbnail(job: Path, theme: str) -> Path:
     cache.mkdir(exist_ok=True)
     target = cache/(digest.hexdigest()+'.png')
     if not target.is_file():
-        thumbnail = render(document,job,cache,theme=theme,brand_color=brand,thumbnail=True)
+        thumbnail = render(document,job,cache,theme=theme,brand_color=brand,thumbnail=True,design_version=version)
         with tempfile.NamedTemporaryFile(dir=cache, delete=False) as stream:
             temporary = Path(stream.name)
             try:

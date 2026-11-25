@@ -1,1 +1,1 @@
-<div class="eyebrow">{{ product.category }}</div><h1>{{ section.headline }}</h1>{% if section.get("subcopy") %}<p>{{ section.subcopy }}</p>{% endif %}<p class="price">{{ product.price }}</p><img src="{{ section.image }}" alt="{{ product.name }}">
+<div class="eyebrow">{{ product.category }}</div><h1>{{ section.headline }}</h1>{% if section.get("subcopy") %}<p>{{ section.subcopy }}</p>{% endif %}{% if product.get("price") %}<p class="price">{{ product.price }}</p>{% endif %}<img src="{{ section.image }}" alt="{{ product.name }}">

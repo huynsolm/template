@@ -33,6 +33,7 @@ MEASURE_SPEC = {
     'stats': [('dt', 'items.{i}.label', 'item'), ('dd', 'items.{i}.value', 'item')],
     'targets': [('li', 'items.{i}', 'item')],
     'structure': [('dt', 'items.{i}.name', 'item'), ('dd', 'items.{i}.desc', 'item')],
+    'cases': [('h3', 'items.{i}.name', 'head'), ('h3 + p', 'items.{i}.desc', 'support')],
 }
 # Information and legal sections are never measured.
 UNMEASURED = ('spec', 'notice', 'review', 'gallery', 'image')

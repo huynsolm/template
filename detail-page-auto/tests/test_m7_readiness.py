@@ -25,7 +25,9 @@ def test_document_readiness_and_overrides(tmp_path):
 def test_required_readiness_for_raw_empty_form(tmp_path):
     from core.readiness import check_readiness
     result=check_readiness({'product':{},'facts':[],'images':[]},tmp_path,{})
-    assert {'NO_HERO','EMPTY_NAME','EMPTY_PRICE'} <= {r['code'] for r in result if r['level']=='필수'}
+    assert {'NO_HERO','EMPTY_NAME'} <= {r['code'] for r in result if r['level']=='필수'}
+    # M9 (user decision 2026-11-25): price is optional; an empty price is left off the page.
+    assert 'EMPTY_PRICE' in {r['code'] for r in result if r['level']=='권장'}
 
 
 def test_readiness_recommendations_and_sample_values(tmp_path):

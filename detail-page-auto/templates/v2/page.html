@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=860"><title>{{ product.name }}</title><link rel="stylesheet" href="assets/theme.css">{% for font in fonts %}<link rel="stylesheet" href="assets/fonts/{{ font.id }}/fonts.css">{% endfor %}</head>
+<body class="v2 theme-{{ theme }}" style="{{ theme_variables }}"><main>
+{% for section in sections %}<section data-section="{{ section.id }}" class="{{ section.type }}"{% if section.type == "solution" %} data-align="auto"{% endif %}>{% set label = labels.get(section.type) %}{% if label %}<div class="section-label">{{ label }}</div>{% endif %}{% include 'v2/sections/' ~ section.type ~ '.html' %}</section>
+{% endfor %}</main><script src="assets/layout.js"></script></body></html>

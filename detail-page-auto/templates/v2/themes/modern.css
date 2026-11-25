@@ -1,0 +1,6 @@
+.theme-modern .hero .photo{padding:40px 40px 0;background:var(--background)}
+.theme-modern .hero .photo img{border-radius:var(--radius)}
+.theme-modern .keyspec{border-top:0;gap:14px}
+.theme-modern .keyspec>div,.theme-modern .keyspec>div:nth-child(odd),.theme-modern .keyspec>div:nth-child(even){background:var(--alternate);border:0;border-radius:14px;padding:22px 26px}
+.theme-modern .pain-list li,.theme-modern .feature,.theme-modern .case-grid article,.theme-modern .notes,.theme-modern .notice-box,.theme-modern .reviews blockquote{border-radius:var(--radius);overflow:hidden}
+.theme-modern .chips li{border-radius:999px}

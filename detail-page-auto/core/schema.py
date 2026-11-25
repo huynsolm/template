@@ -14,8 +14,14 @@ class Model(BaseModel):
 class Product(Model):
     name: Text
     category: Text
-    price: Text
+    # M9: optional. An empty price is left off the page; a written sale status is shown as written.
+    price: Text | None = None
     brand_color: Annotated[str, StringConstraints(pattern=r'^#[0-9a-fA-F]{6}$')]
+
+    @field_validator('price', mode='before')
+    @classmethod
+    def empty_price(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
 
 class Section(Model):
     id: Text
@@ -98,9 +104,23 @@ class Stats(Section):
     type: Literal['stats']
     items: list[Highlight] = Field(min_length=1, max_length=4)
 
+class TargetGroup(Model):
+    name: Literal['업종', '용도', '대상']
+    items: list[Title] = Field(min_length=1, max_length=12)
+
 class Targets(Section):
     type: Literal['targets']
-    items: list[Title] = Field(min_length=1, max_length=12)
+    items: list[Title] = Field(min_length=1, max_length=36)
+    groups: list[TargetGroup] | None = None  # M9: industries / uses, shown apart in design v2
+
+class CaseItem(Model):
+    name: Title
+    desc: Short
+
+class Cases(Section):
+    # M9: separate application examples (not consecutive steps), entered by the seller.
+    type: Literal['cases']
+    items: list[CaseItem] = Field(min_length=1, max_length=6)
 
 class Structure(Section):
     type: Literal['structure']
@@ -144,7 +164,7 @@ class Notice(Section):
     type: Literal['notice']
     body: Body
 
-SectionType = Annotated[Hero | Pain | Solution | Features | HowTo | Review | Spec | FAQ | Notice | Stats | Targets | Structure | Gallery | ImageSection, Field(discriminator='type')]
+SectionType = Annotated[Hero | Pain | Solution | Features | HowTo | Review | Spec | FAQ | Notice | Stats | Targets | Structure | Gallery | ImageSection | Cases, Field(discriminator='type')]
 
 class Document(Model):
     schema_version: Literal['1.0', '1.1']

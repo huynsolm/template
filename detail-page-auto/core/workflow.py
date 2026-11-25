@@ -14,7 +14,7 @@ from .schema import Document, Model, Text
 from .prompting import make_prompt, make_fix_prompt, prompt_version, data_block
 from .ingest import extract_json
 from .assemble import assemble, DEFAULT_TERMS
-from .render import render
+from .render import render, job_design_version, DESIGN_VERSIONS
 
 
 def now():
@@ -61,9 +61,11 @@ def prepare_images(facts: ProductFacts, job: Path, cache_dir: Path | None = None
     return stored,metadata,reviews
 
 
-def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, method='paste', locked=None, locked_review=None, theme=DEFAULT_THEME, brand_color=None):
+def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, method='paste', locked=None, locked_review=None, theme=DEFAULT_THEME, brand_color=None, design_version=1):
     if type(max_attempts) is not int or max_attempts<1:
         raise ValueError('max_attempts must be a positive integer')
+    if design_version not in DESIGN_VERSIONS:
+        raise ValueError('design_version must be 1 or 2')
     from .themes import theme_styles, contrast_metadata
     brand = brand_color if brand_color is not None else facts.product.brand_color
     styles=theme_styles(theme,brand)
@@ -93,7 +95,8 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
         write_json(job/'edits.json',{'locked_sections':list(locked or {})})
         write_json(job/'locked-review.json',locked_review or [])
         (job/'prompt.md').write_text(make_prompt(stored,locked),encoding='utf-8')
-        write_json(job/'manifest.json',{'theme':theme,'brand_color':brand,**contrast_metadata(styles),'prompt_version':prompt_version(stored),'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews})
+        write_json(job/'manifest.json',{'theme':theme,'brand_color':brand,**contrast_metadata(styles),'prompt_version':prompt_version(stored),'method':method,'source_label':'','attempts':0,'max_attempts':max_attempts,'created_at':now(),'updated_at':now(),'status':'awaiting_answer','image_processing':image_metadata,'image_reviews':image_reviews,
+                                            **({'design_version':design_version} if design_version!=1 else {})})
         return job
     except BaseException:
         shutil.rmtree(job)
@@ -151,7 +154,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         if render_output:
             if needs_review:
                 print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 cli.py accept --job '+str(job)+' 로 승인하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
-            rendered_bundle=render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme,brand_color=brand)
+            rendered_bundle=render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme,brand_color=brand,design_version=job_design_version(manifest))
             copy_review=read_json(rendered_bundle/'manifest.json').get('copy_reviews',[])
             if copy_review:
                 review+=copy_review
@@ -227,7 +230,8 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
             if (source/name).is_file():
                 shutil.copyfile(source/name,staging/name)
         rendered=render(document,staging,staging/'rendered',png=True,
-                        needs_review=bool(review),accept_review=True,theme=theme,brand_color=brand)
+                        needs_review=bool(review),accept_review=True,theme=theme,brand_color=brand,
+                        design_version=job_design_version(original_manifest))
         copy_review=read_json(rendered/'manifest.json').get('copy_reviews',[])
         if copy_review:
             review=review+copy_review
@@ -247,6 +251,7 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
             'claim_checks':claim_checks,
             'image_checks':image_checks,
             'image_sources':sources,
+            **({'design_version':job_design_version(original_manifest)} if job_design_version(original_manifest)!=1 else {}),
             'claim_terms':original_manifest.get('claim_terms',list(dict.fromkeys([*DEFAULT_CLAIM_TERMS,*original_manifest.get('review_terms',[])]))),
             'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),
             'review_terms':original_manifest.get('review_terms',list(DEFAULT_TERMS)),
@@ -295,7 +300,8 @@ def regenerate_job(previous: Path, locked_sections: list[str] | None = None):
     previous_manifest = read_json(previous/'manifest.json')
     child=create_job(facts,previous,previous.parent,max_attempts=previous_manifest.get('max_attempts',5),
                      locked=locked,locked_review=review,theme=previous_manifest.get('theme','classic'),
-                     brand_color=effective_brand(previous_manifest,facts.product.brand_color))
+                     brand_color=effective_brand(previous_manifest,facts.product.brand_color),
+                     design_version=job_design_version(previous_manifest))
     try:
         child_manifest=read_json(child/'manifest.json')
         child_manifest['review_terms']=read_json(previous/'manifest.json').get('review_terms',list(DEFAULT_TERMS))
@@ -391,11 +397,11 @@ def overflow_regenerate_job(previous: Path):
         raise
 
 
-def generate_job(facts, images, output, provider, max_attempts=3, source_label='', render_output=False, terms=None, accept_review=False, existing_job: Path | None = None, theme=None, brand_color=None):
+def generate_job(facts, images, output, provider, max_attempts=3, source_label='', render_output=False, terms=None, accept_review=False, existing_job: Path | None = None, theme=None, brand_color=None, design_version=1):
     if type(max_attempts) is not int or max_attempts<1:
         raise ValueError('max_attempts must be a positive integer')
     if existing_job is None:
-        job=create_job(facts,images,output,max_attempts=max_attempts,method=f'cli:{provider.name}',theme=theme if theme is not None else DEFAULT_THEME,brand_color=brand_color)
+        job=create_job(facts,images,output,max_attempts=max_attempts,method=f'cli:{provider.name}',theme=theme if theme is not None else DEFAULT_THEME,brand_color=brand_color,design_version=design_version)
     else:
         job=Path(existing_job)
         if (job/'draft.json').exists():

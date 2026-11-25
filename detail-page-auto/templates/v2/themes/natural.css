@@ -1,0 +1,8 @@
+.theme-natural .hero .photo{padding:48px 96px 0;background:var(--background)}
+.theme-natural .hero .photo img{border-radius:320px 320px 0 0;aspect-ratio:1/1}
+.theme-natural .hero .copy{text-align:center}
+.theme-natural .hero h1{margin-left:auto;margin-right:auto}
+.theme-natural .keyspec{border-top:1px solid var(--text)}
+.theme-natural .feature,.theme-natural .case-grid article,.theme-natural .notice-box,.theme-natural .notes{border-radius:var(--radius);overflow:hidden}
+.theme-natural .chips li{border-radius:999px}
+.theme-natural .pain h2,.theme-natural .solution h2{text-align:center}

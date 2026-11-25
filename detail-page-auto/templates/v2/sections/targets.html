@@ -1,0 +1,1 @@
+<h2>추천 대상</h2>{% if section.get("groups") %}{% for group in section.groups %}<div class="group"><div class="group-name">{{ group.name }}</div><ul class="chips">{% for item in group["items"] %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endfor %}{% else %}<ul class="chips">{% for item in section["items"] %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}

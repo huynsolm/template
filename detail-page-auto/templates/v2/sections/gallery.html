@@ -1,0 +1,1 @@
+<h2>상품 사진</h2><div class="photo-grid">{% for item in section['items'] %}{% if item.get('staged') %}<figure class="staged"><img src="{{ item.image }}" alt="{{ item.get('alt', product.name) }}"><figcaption class="staged-note">연출 이미지입니다</figcaption></figure>{% else %}<figure><img src="{{ item.image }}" alt="{{ item.get('alt', product.name) }}"></figure>{% endif %}{% endfor %}</div>

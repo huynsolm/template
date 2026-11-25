@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## 현재 작업
-`CODEX_TASK_M8C.md`(사진에서 브랜드 색 후보 추출, PDF 내보내기: 글자 보존 검증과 캔바 편집 가능 여부 확인 절차)를 구현한다. 구현은 Claude, 검수는 Codex가 한다. 지시서의 "확인 질문"에 사용자 답을 받은 뒤 시작한다. M1~M8-B는 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`와 `detail-page-auto/README.md`를 읽는다. 작업 전 `git fetch`로 원격 변경을 확인한다.
+`CODEX_TASK_M9.md`(상세페이지 디자인 v2: 7개 테마 개선, 기존 작업은 v1 고정, 가격·적용 사례·업종/용도 입력 분리)를 구현한다. 구현은 Claude, 검수는 Codex가 한다. M1~M8-C는 완료됐으며 그 테스트는 계속 통과해야 한다. 먼저 `CLAUDE_HANDOFF.md`와 `detail-page-auto/README.md`를 읽는다. 작업 전 `git fetch`로 원격 변경을 확인한다.
 
 ## 규칙
 - 유료 AI API(Anthropic/OpenAI/Google API 키·SDK)와 외부 이미지 처리 서비스를 사용하지 않는다. 문구 생성은 붙여넣기 방식(기본)과 사용자가 로그인한 공식 CLI(`claude`, `codex`, `gemini`, 선택)로만 한다.
@@ -10,7 +10,8 @@
 - 문구 길이 초과는 자동으로 자르거나 고치지 않는다. 수정할 위치와 이유만 표시한다.
 - 플랫폼 규격 값을 지어내지 않는다. 공식 문서로 확인한 값만 출처 URL·확인 날짜와 함께 기록하고, 확인하지 못한 값은 비워 둔다.
 - 원본 사진을 수정하지 않는다. 배경 제거 모델 파일을 저장소에 커밋하지 않는다.
-- M5-A 대비 정책: classic은 legacy(모든 브랜드 색·기존 HTML/DOM/픽셀 유지, 저대비는 BRAND_COLOR_LOW_CONTRAST 경고만), minimal/bold는 aa(글자색만 보정, 장식·브랜드 배경은 원본 유지). 작업·렌더링·ZIP에 contrast_policy·resolved_colors·contrast_adjustments를 기록한다.
+- M5-A 대비 정책(디자인 v1): classic은 legacy(모든 브랜드 색·기존 HTML/DOM/픽셀 유지, 저대비는 BRAND_COLOR_LOW_CONTRAST 경고만), minimal/bold는 aa(글자색만 보정, 장식·브랜드 배경은 원본 유지). 작업·렌더링·ZIP에 contrast_policy·resolved_colors·contrast_adjustments를 기록한다.
+- 디자인 버전(M9, 2026-11-25 사용자 결정): 기존 작업은 v1에 고정하고 v1 결과(특히 **classic v1**의 HTML·DOM·픽셀)는 바꾸지 않는다. 새 작업은 v2가 기본이다. v2는 7개 테마 모두 aa 대비 정책과 M8-A 줄 수 규칙을 적용한다.
 - 폰트는 `detail-page-auto/assets/font-library/`(OFL, 라이선스 원문 포함)와 기존 Noto Sans CJK만 쓴다. 렌더링 중 외부에서 폰트를 받지 않는다. 새 폰트 추가는 사용자 승인과 상업 이용 가능한 라이선스 원문이 있을 때만 한다. 테마 CSS에 외부 URL·`@import`를 넣지 않는다.
 - 저장소는 공개(public)다. 사용자의 실제 상품·거래처 자료(사진, 브로슈어, 회사명)를 커밋하지 않는다. 샘플은 가상 상품과 직접 생성한 이미지만 쓴다.
 - 화면은 `127.0.0.1`에만 바인딩한다. 검증·조립·렌더링·이미지 처리·내보내기·일괄 처리 로직은 `core/`에 두고 UI에 중복 구현하지 않는다.
@@ -22,4 +23,4 @@
 - 외부 명령은 `shell=False` 인자 리스트로 실행한다.
 - 외부 이미지·폰트를 다운로드해 저장소에 넣지 않는다. 테스트 이미지는 Pillow로 생성한다.
 - 테스트를 건너뛰거나 비활성화해서 통과시키지 않는다. 실제 Chromium 렌더링 테스트를 포함한다.
-- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M8C.md`의 "완료 보고 형식"대로 보고한다.
+- 각 작업이 끝나면 브랜치 `ccr-f9c07036-vgvm5j`에 커밋·푸시하고 `CODEX_TASK_M9.md`의 "완료 기준"대로 보고한다.

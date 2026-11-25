@@ -1,0 +1,8 @@
+.theme-industrial .hero .photo{padding:32px 56px;background:var(--alternate)}
+.theme-industrial .hero .photo img{aspect-ratio:16/10;object-fit:contain;background:var(--background)}
+.theme-industrial .hero .copy{border-left:8px solid var(--brand);margin:40px 56px 0;padding:4px 0 4px 28px}
+.theme-industrial .keyspec{grid-template-columns:1fr}
+.theme-industrial .keyspec>div,.theme-industrial .keyspec>div:nth-child(odd),.theme-industrial .keyspec>div:nth-child(even){display:grid;grid-template-columns:240px 1fr;align-items:baseline;padding:18px 0;border-right:0}
+.theme-industrial .keyspec dt{margin:0}
+.theme-industrial .keyspec dd{text-align:right}
+.theme-industrial .keyspec .note{grid-column:2;text-align:right}

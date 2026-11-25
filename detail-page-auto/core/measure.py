@@ -9,7 +9,7 @@ from .copy_rules import (DENSE_SECTION_LINES, LINE_LIMITS, LIST_FIELD, LIST_LIMI
                          ROLE_NAMES)
 
 # Sections filled from the seller's product information (①), not from the AI answer.
-SELLER_SECTIONS = ('stats', 'targets', 'structure')
+SELLER_SECTIONS = ('stats', 'targets', 'structure', 'cases')
 # Bump when the measurement or the alignment/fitting it depends on changes, so older
 # previews of the M8-A themes are rendered again instead of reused.
 MEASURE_VERSION = 'm8a-2'

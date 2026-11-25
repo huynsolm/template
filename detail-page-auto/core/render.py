@@ -34,6 +34,51 @@ def chromium_path(playwright_default):
     return shutil.which('chromium')
 
 
+DESIGN_VERSIONS = (1, 2)
+# New jobs from the app and CLI use v2 (M9, user decision 2026-11-25). The library default stays 1,
+# and a job without a recorded version is v1, so existing jobs keep their results.
+DEFAULT_DESIGN_VERSION = 2
+
+
+def job_design_version(manifest: dict) -> int:
+    return manifest.get('design_version', 1)
+
+
+def expected_contrast_policy(theme_id: str, design_version: int) -> str:
+    """Design v2 uses the aa policy for every theme; v1 keeps each theme's own (classic: legacy)."""
+    from .themes import load_theme
+    return 'aa' if design_version == 2 else load_theme(theme_id).contrast_policy
+# Design v2 section labels (English, 15px, the existing label exception).
+V2_LABELS = {'pain': 'CHECK', 'solution': 'SOLUTION', 'features': 'FEATURES', 'structure': 'STRUCTURE',
+             'targets': 'FOR', 'how_to': 'HOW TO', 'cases': 'CASES', 'spec': 'SPECIFICATION', 'faq': 'FAQ'}
+
+
+def v2_styles(theme_id: str, design, variables: str, bundled_fonts: bool) -> tuple[str, str]:
+    """Design v2 stylesheet (shared catalog + the theme's own) and its extra variables."""
+    from .themes import validate_css
+    v2 = ROOT / 'templates/v2'
+    css = (v2 / 'catalog.css').read_text(encoding='utf-8') + '\n' + (v2 / 'themes' / f'{theme_id}.css').read_text(encoding='utf-8')
+    weight = design.type.heading_weight if design.type else 700
+    extra = f'; --heading-weight: {weight}'
+    if not bundled_fonts:
+        css = "@font-face{font-family:DetailKorean;src:url('fonts/NotoSansCJK-Regular.ttc')}\n" + css
+        extra += '; --font-heading: DetailKorean; --font-body: DetailKorean'
+    validate_css(css, allow_legacy_font=not bundled_fonts)
+    return css, variables + extra
+
+
+def split_spec_table(table: dict) -> dict:
+    """Columns whose value is the same in every row (2+ rows) are shown once as common specs;
+    the table keeps the columns that differ. Nothing is dropped."""
+    columns, rows = table['columns'], table['rows']
+    common = [i for i in range(len(columns)) if len(rows) > 1 and len({row[i] for row in rows}) == 1]
+    if len(common) == len(columns):
+        common = []
+    keep = [i for i in range(len(columns)) if i not in common]
+    return {'common': [(columns[i], rows[0][i]) for i in common], 'columns': [columns[i] for i in keep],
+            'rows': [[row[i] for i in keep] for row in rows]}
+
+
 def open_offline(pw, html: Path, families=('DetailKorean',)):
     """Open one bundle's page.html through the offline virtual origin and wait for fonts,
     images and the M8-A layout script. Returns (browser, page, network, failures)."""
@@ -128,13 +173,16 @@ def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, t
         raise ValueError(f'Chromium asset loading/rendering failed: {exc}') from exc
 
 
-def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic", brand_color: str | None = None, thumbnail: bool = False) -> Path | bytes:
+def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic", brand_color: str | None = None, thumbnail: bool = False, design_version: int = 1) -> Path | bytes:
     if type(max_height) is not int or not 1 <= max_height <= 30000:
         raise ValueError('max_height must be an integer in 1..30000')
+    if design_version not in DESIGN_VERSIONS:
+        raise ValueError('design_version must be one of %s' % (DESIGN_VERSIONS,))
+    v2 = design_version == 2
     from .themes import theme_styles, contrast_metadata, load_theme
     from .fonts import load_font
     brand = brand_color if brand_color is not None else document.product.brand_color
-    styles = theme_styles(theme, brand)
+    styles = theme_styles(theme, brand, policy='aa' if v2 else None)
     design = load_theme(theme)
     roles = {role: load_font(font_id) for role, font_id in
              (design.fonts.model_dump(exclude_none=True) if design.fonts else {}).items()}
@@ -154,6 +202,8 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         assets.mkdir()
         css = styles['css']
         variables = styles['variables']
+        if v2:
+            css, variables = v2_styles(theme, design, variables, bool(fonts))
         if fonts:
             (assets / 'fonts').mkdir()
             for font in fonts.values():
@@ -161,9 +211,9 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
             variables += ''.join(f'; --font-{role}: "{font.family}"' for role, font in roles.items())
         else:
             shutil.copytree(ROOT / 'assets/fonts', assets / 'fonts')
-            if document.schema_version == '1.1':
+            if document.schema_version == '1.1' and not v2:
                 css += '\n' + (ROOT / 'templates/rich.css').read_text(encoding='utf-8')
-        if document.schema_version == '1.1':
+        if document.schema_version == '1.1' and not v2:
             shutil.copyfile(ROOT/'templates/fit-stats.js', assets/'fit-stats.js')
         (assets / 'theme.css').write_text(css, encoding='utf-8')
         mapping = {}
@@ -181,8 +231,14 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         data = rewrite(data)
         env = Environment(loader=FileSystemLoader(ROOT / 'templates'), autoescape=select_autoescape(['html']), undefined=StrictUndefined)
         from .themes import ALIGNABLE
-        (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=variables, contrast_policy=styles['contrast_policy'], fonts=fonts.values(), variants=design.variants, align=design.align, alignable=ALIGNABLE), encoding='utf-8')
-        if design.variants:
+        if v2:
+            for section in data['sections']:
+                if section['type'] == 'spec' and section.get('spec_table'):
+                    section['split'] = split_spec_table(section['spec_table'])
+            (job / 'page.html').write_text(env.get_template('v2/page.html').render(**data, theme=theme, theme_variables=variables, fonts=list(fonts.values()), alignable=ALIGNABLE, labels=V2_LABELS), encoding='utf-8')
+        else:
+            (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=variables, contrast_policy=styles['contrast_policy'], fonts=fonts.values(), variants=design.variants, align=design.align, alignable=ALIGNABLE), encoding='utf-8')
+        if design.variants or v2:
             shutil.copyfile(ROOT/'templates/layout.js', assets/'layout.js')
         # The bundled JSON references bundled images, so it can be rerun with --images JOB.
         (job / 'input.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
@@ -203,7 +259,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         measured = copy_reviews(metrics, document)
         # M8-A rules apply to the M6 themes. Legacy themes only report measurements,
         # so their review state, file names and pixels stay as before.
-        enforce_copy_rules = design.type is not None
+        enforce_copy_rules = design.type is not None or v2
         reviews_copy = measured if enforce_copy_rules else []
         needs_review = bool(needs_review or reviews_copy)
         cuts = [0]
@@ -230,6 +286,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                     'pages': pages, 'sections': geometry['sections'], 'horizontal_overflow': False,
                     'copy_metrics': metrics, 'copy_reviews': reviews_copy,
                     'copy_rules_enforced': enforce_copy_rules, 'copy_measure_version': MEASURE_VERSION,
+                    'design_version': design_version,
                     **({'image_sources': provenance['sources']} if provenance['sources'] is not None else {}),
                     **({'ai_images': True, 'image_sources_known': provenance['sources'] is not None} if provenance['ai'] else {}),
                     **({'image_checks': provenance['checks']} if provenance['checks'] else {}),

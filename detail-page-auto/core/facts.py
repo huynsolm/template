@@ -108,7 +108,16 @@ class ProductFacts(Model):
     highlights: list[Highlight] = Field(default_factory=list, max_length=4)
     targets: list[Title] = Field(default_factory=list, max_length=12)
     structure: list[StructureItem] = Field(default_factory=list, max_length=8)
+    # M9 (optional; None keeps older facts.json unchanged)
+    use_cases: list[StructureItem] | None = Field(default=None, max_length=6)
+    target_industries: list[Title] | None = Field(default=None, max_length=12)
+    target_uses: list[Title] | None = Field(default=None, max_length=12)
     spec_table: SpecTable | None = None
+
+    @field_validator('use_cases', 'target_industries', 'target_uses', mode='before')
+    @classmethod
+    def empty_list_is_none(cls, value):
+        return None if value == [] else value
 
     @field_validator('images')
     @classmethod

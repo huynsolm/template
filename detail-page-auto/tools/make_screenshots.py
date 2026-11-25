@@ -426,6 +426,40 @@ def make_m8c_screenshots(images: Path, output: Path, samples: Path):
     return {'samples': made, 'images': [str(images/n) for n in ('m8c-colors.png','m8c-pdf-vs-jpg.png')]}
 
 
+def make_m9_screenshots(images: Path, artifacts: Path):
+    """M9: design v2 of all seven themes with the rich virtual sample (top 1800px), plus a v1/v2 overview."""
+    from PIL import Image, ImageDraw
+    from core.assemble import assemble
+    from core.copy_schema import CopyDraft
+    from core.facts import ProductFacts
+    from core.ingest import extract_json
+    from core.render import render
+    from core.themes import THEME_IDS
+    images.mkdir(parents=True,exist_ok=True); artifacts.mkdir(parents=True,exist_ok=True)
+    facts = ProductFacts.model_validate_json((ROOT/'samples/facts-rich.json').read_text())
+    document, _ = assemble(facts, CopyDraft.model_validate(extract_json((ROOT/'samples/answer-rich.txt').read_text())))
+    tops = {}
+    for version in (1, 2):
+        for theme in THEME_IDS:
+            bundle = render(document, ROOT/'samples', artifacts/f'v{version}', theme=theme, png=True, design_version=version)
+            manifest = json.loads((bundle/'manifest.json').read_text())
+            top = Image.new('RGB', (860, min(1800, manifest['height'])), 'white')
+            for part in manifest['pages']:
+                if part['top'] >= top.height: break
+                with Image.open(bundle/part['png']) as rendered:
+                    top.paste(rendered, (0, part['top']))
+            tops[(version, theme)] = top
+            if version == 2:
+                top.save(images/f'v2-{theme}.png')
+    scale = 0.3; width = int(860*scale); height = int(1800*scale)
+    overview = Image.new('RGB', (len(THEME_IDS)*(width+12)+12, 2*(height+12)+12), '#c9ced1')
+    for row, version in enumerate((1, 2)):
+        for column, theme in enumerate(THEME_IDS):
+            overview.paste(tops[(version, theme)].resize((width, int(tops[(version, theme)].height*scale))), (12+column*(width+12), 12+row*(height+12)))
+    overview.save(images/'v2-overview.png')
+    return {'images': [str(images/f'v2-{t}.png') for t in THEME_IDS] + [str(images/'v2-overview.png')]}
+
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description='샘플 화면 캡처를 명시적으로 갱신합니다. pytest에서는 임시 경로만 사용합니다.')
@@ -435,9 +469,13 @@ if __name__=='__main__':
     parser.add_argument('--m7-only',action='store_true',help='가상 브로슈어 입력 도우미 캡처')
     parser.add_argument('--m8a-only',action='store_true',help='새 테마 4종 × 긴 샘플 답변 상단 캡처(줄 수 측정 결과 포함)')
     parser.add_argument('--m8b-only',action='store_true',help='AI 이미지 출처 확인(⑥)과 연출 이미지 표시 캡처')
+    parser.add_argument('--m9-only',action='store_true',help='디자인 v2 7개 테마 상단 캡처와 v1/v2 비교')
     parser.add_argument('--m8c-only',action='store_true',help='색 후보 화면, PDF 첫 쪽, 캔바 확인용 가상 샘플 PDF')
     parser.add_argument('--samples',type=Path,default=ROOT/'docs/samples')
     args=parser.parse_args()
+    if args.m9_only:
+        print(json.dumps(make_m9_screenshots(args.images,args.output),ensure_ascii=False,indent=2))
+        sys.exit(0)
     if args.m8c_only:
         print(json.dumps(make_m8c_screenshots(args.images,args.output,args.samples),ensure_ascii=False,indent=2))
         sys.exit(0)

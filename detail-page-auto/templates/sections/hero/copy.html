@@ -2,5 +2,5 @@
   <div class="eyebrow">{{ product.category }}</div>
   <h1>{{ section.headline }}</h1>
   {% if section.get('subcopy') %}<p>{{ section.subcopy }}</p>{% endif %}
-  <p class="price">{{ product.price }}</p>
+  {% if product.get("price") %}<p class="price">{{ product.price }}</p>{% endif %}
 </div>

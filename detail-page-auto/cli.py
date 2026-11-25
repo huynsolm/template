@@ -24,9 +24,10 @@ def m1(argv):
     parser.add_argument('--png',action='store_true')
     parser.add_argument('--theme',choices=THEME_IDS,default='classic')
     parser.add_argument('--brand-color', metavar='#RRGGBB')
+    parser.add_argument('--design-version', type=int, choices=[1, 2], default=1, help='디자인 버전 (이 기존 명령의 기본은 v1)')
     args=parser.parse_args(argv)
     document=Document.model_validate_json(args.input.read_text(encoding='utf-8'))
-    return render(document,args.images,args.output,args.max_height,args.png,theme=args.theme,brand_color=args.brand_color)
+    return render(document,args.images,args.output,args.max_height,args.png,theme=args.theme,brand_color=args.brand_color,design_version=args.design_version)
 
 
 def run_batch(args):
@@ -130,6 +131,7 @@ def main(argv=None):
             prompt.add_argument('--output',type=Path)
             prompt.add_argument('--regenerate',action='store_true')
             prompt.add_argument('--max-attempts',type=int,default=5)
+            prompt.add_argument('--design-version',type=int,choices=[1,2],default=2,help='새 작업의 디자인 버전 (기본 v2)')
             ingest=sub.add_parser('ingest')
             ingest.add_argument('--job',type=Path,required=True)
             ingest.add_argument('--answer',type=Path,required=True)
@@ -138,6 +140,7 @@ def main(argv=None):
             ingest.add_argument('--accept-review',action='store_true',help='검수 항목을 확인했음을 명시하고 일반 이미지 파일명 사용')
             ingest.add_argument('--review-terms',type=Path)
             generate=sub.add_parser('generate')
+            generate.add_argument('--design-version',type=int,choices=[1,2],default=2,help='새 작업의 디자인 버전 (기본 v2)')
             generate.add_argument('--facts',type=Path,required=True)
             generate.add_argument('--images',type=Path,required=True)
             generate.add_argument('--output',type=Path,required=True)
@@ -230,7 +233,7 @@ def main(argv=None):
                         print(f"{item['level']}: {item['field']} · {item['message']}",file=sys.stderr)
                     if any(item['level']=='필수' for item in findings):
                         raise ValueError('필수 입력을 보완한 뒤 프롬프트를 만드세요.')
-                    result=create_job(ProductFacts.model_validate(raw),args.images,args.output,max_attempts=args.max_attempts)
+                    result=create_job(ProductFacts.model_validate(raw),args.images,args.output,max_attempts=args.max_attempts,design_version=args.design_version)
             elif args.command=='ingest':
                 from core.providers import PasteProvider
                 answer=PasteProvider(args.answer).generate('')
@@ -238,7 +241,7 @@ def main(argv=None):
             else:
                 from core.providers import CliProvider
                 provider=CliProvider(args.provider,config_path=args.providers_config,timeout=args.timeout)
-                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme,brand_color=args.brand_color)
+                result=generate_job(read_facts(args.facts),args.images,args.output,provider,max_attempts=args.max_attempts,source_label=args.source_label,render_output=args.render,terms=terms,accept_review=args.accept_review,theme=args.theme,brand_color=args.brand_color,design_version=args.design_version)
         print(result.resolve())
         return 0
     except (ValueError,OSError) as exc:

@@ -358,7 +358,8 @@ def import_batch(source: Path, photo_root: Path, output: Path, *, max_products: 
                  'status': 'input_error', 'message': ''}
         if product is not None:
             try:
-                job = create_job(product, folder, batch / 'products' / pid, theme=theme)
+                from .render import DEFAULT_DESIGN_VERSION
+                job = create_job(product, folder, batch / 'products' / pid, theme=theme, design_version=DEFAULT_DESIGN_VERSION)
                 entry.update(job=str(job.relative_to(batch)), status='awaiting_answer')
             except ValueError as exc:
                 entry['errors'] = [_error('products', number, '사진 폴더', f'작업을 만들 수 없습니다: {exc}')]
@@ -388,8 +389,10 @@ def _approval_is_current(job: Path, accepted: Path, manifest: dict) -> bool:
         fallback = read_json(job/'draft.json')['product']['brand_color']
         if effective_brand(manifest, fallback).lower() != effective_brand(source, fallback).lower():
             return False
+        from .render import expected_contrast_policy, job_design_version
         return (manifest.get('theme', 'classic') == source.get('theme', 'classic')
-                and manifest.get('contrast_policy') == load_theme(source.get('theme', 'classic')).contrast_policy)
+                and job_design_version(manifest) == job_design_version(source)
+                and manifest.get('contrast_policy') == expected_contrast_policy(source.get('theme', 'classic'), job_design_version(source)))
     except (OSError, ValueError, KeyError):
         return False
 

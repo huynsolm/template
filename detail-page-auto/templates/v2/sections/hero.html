@@ -1,0 +1,1 @@
+<div class="photo"><img src="{{ section.image }}" alt="{{ product.name }}"></div><div class="copy"><div class="eyebrow">{{ product.category }}</div><h1>{{ section.headline }}</h1>{% if section.get("subcopy") %}<p class="sub">{{ section.subcopy }}</p>{% endif %}{% if product.get("price") %}<p class="price">{{ product.price }}</p>{% endif %}</div>

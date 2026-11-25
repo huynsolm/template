@@ -1,0 +1,6 @@
+.theme-impact .hero .copy{order:-1;background:var(--alternate);padding:64px 56px 48px}
+.theme-impact .hero h1{font-size:78px;line-height:1.15}
+.theme-impact .keyspec{border-top:4px solid var(--text)}
+.theme-impact h2{font-size:50px}
+.theme-impact .steps li{border-top-width:4px}
+.theme-impact .case-grid article{border-top-width:10px}

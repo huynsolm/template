@@ -1,0 +1,1 @@
+<h2>구조와 구성</h2>{% if section.get("image") %}<div class="diagram"><img src="{{ section.image }}" alt="{{ product.name }} 구조"></div>{% endif %}<dl class="parts">{% for item in section["items"] %}<div><dt>{{ item.name }}</dt><dd>{{ item.desc }}</dd></div>{% endfor %}</dl>

@@ -150,6 +150,16 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - `TEXT_JS`: `display:contents` 부모는 가장 가까운 상자 있는 조상으로 `checkVisibility()`(표시 여부), 글자 자체는 부모의 계산된 `visibility`로 판단.
   - 색: 알파 채널이 실제로 무언가를 가릴 때(최소 알파 < 255)만 전경 마스크, 모두 불투명하면 RGB처럼 가장자리 배경 제외. `colors-3`.
 
+## M9 현재 상태 (디자인 v2 · 입력 항목 분리)
+
+사용자 결정(2026-11-25, `CODEX_TASK_M9.md`): 7개 테마 모두 v2, 기존 작업은 v1 고정(AGENTS.md의 classic 규칙은 v1에만 적용), 새 작업은 v2 기본, 가격 선택(빈 경우만 생략), 적용 사례·업종/용도 추가(기존 데이터 호환).
+- `core/render.py`: `render(..., design_version=1)`(라이브러리 기본 1), `DEFAULT_DESIGN_VERSION=2`(앱·CLI prompt/generate·일괄 작업의 새 작업), `job_design_version(manifest)`(키 없으면 1), `expected_contrast_policy(theme, version)`(v2는 모두 aa). v2: `templates/v2/page.html`·`sections/*`, CSS는 `templates/v2/catalog.css` + `templates/v2/themes/<id>.css`(주석 금지 — `validate_css`), `split_spec_table`(공통 열 분리), fit-stats 없음(값을 줄이지 않음), layout.js는 solution만 자동 정렬, 측정 규칙 7종 모두 적용. manifest `design_version`.
+- `themes.theme_styles(..., policy='aa')`: v2 classic에 aa 적용(v1 classic은 legacy 그대로).
+- 작업 흐름: `create_job(design_version=)`(v1이면 manifest에 키를 쓰지 않음), ingest·accept·regenerate·preview가 작업의 버전을 따름. `preview_job(design_version=)`으로 바꾸면 승인 해제. `bundle_matches`·일괄 승인 판정이 버전과 버전별 대비 정책을 비교. 갤러리 썸네일 캐시 키에 버전 포함.
+- 데이터: `Product.price` 선택(공백 → None), `ProductFacts.use_cases`/`target_industries`/`target_uses`(None 기본), 새 판매자 섹션 `cases`(사용 방법 다음), `Targets.groups`. v1 템플릿은 가격이 있을 때만 `.price`, `sections/cases.html` 추가. readiness `EMPTY_PRICE`는 권장.
+- PDF 글자 추출을 막는 표현(`font-variant-numeric: tabular-nums`, `opacity`)은 v2 CSS에 쓰지 않는다.
+- 테스트 `tests/test_m9.py`. 기존 테스트 변경: readiness(가격 권장), app 테마 변경 테스트는 v1 classic 정책 확인용이라 v1 고정. 캡처 `--m9-only`. 검수 요청 `CODEX_REVIEW_M9.md`.
+
 ## 제품과 현재 흐름
 
 단일 사용자가 자신의 컴퓨터에서 상품 정보·사진으로 폭 860px의 상세페이지 이미지를 만드는 도구다.

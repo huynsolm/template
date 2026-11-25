@@ -268,6 +268,8 @@ def test_theme_change_preserves_snapshot_and_uses_selected_theme(monkeypatch,tmp
     app.text_area(key='answer_text').set_value((ROOT/'samples/answer.txt').read_text())
     app.button(key='ingest').click().run()
     stage(app,4)
+    # M9: new jobs use design v2; this test is about the v1 classic legacy policy, so pin v1.
+    app.radio(key='design_choice').set_value(1).run(timeout=60)
     app.selectbox(key='theme_choice').set_value('classic').run(timeout=60)
     app.button(key='preview').click().run(timeout=60)
     first=Path(app.session_state['bundle'])

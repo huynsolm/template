@@ -12,8 +12,15 @@ def seller_sections(facts):
 
     if facts.highlights:
         add('stats', items=[item.model_dump() for item in facts.highlights])
-    if facts.targets:
+    industries, uses = facts.target_industries or [], facts.target_uses or []
+    if industries or uses:
+        groups = [{'name': name, 'items': items} for name, items in
+                  (('업종', industries), ('용도', uses), ('대상', facts.targets)) if items]
+        add('targets', items=industries + uses + facts.targets, groups=groups)
+    elif facts.targets:
         add('targets', items=facts.targets)
+    if facts.use_cases:
+        add('cases', items=[item.model_dump() for item in facts.use_cases])
     diagram = next((i for i in facts.images if i.role == 'diagram'), None)
     if facts.structure:
         add('structure', items=[item.model_dump() for item in facts.structure],
@@ -86,7 +93,7 @@ def assemble(facts, copy, locked=None, terms=DEFAULT_TERMS):
     append_seller('structure', 'targets', 'gallery')
     add('how_to',steps=[{'title':i.title,'desc':i.desc} for i in copy.how_to])
     for n,i in enumerate(copy.how_to): check(i,'how_to-1',f'how_to.{n}')
-    append_seller('review', 'spec')
+    append_seller('cases', 'review', 'spec')
     add('faq',items=[{'q':i.q,'a':i.a} for i in copy.faq])
     for n,i in enumerate(copy.faq): check(i,'faq-1',f'faq.{n}')
     append_seller('notice')

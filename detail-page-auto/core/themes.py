@@ -148,7 +148,9 @@ def contrast_metadata(styles: dict) -> dict:
         'contrast_policy','resolved_colors','contrast_adjustments','contrast_reviews')}
 
 
-def theme_styles(theme_id: str, brand: str) -> dict:
+def theme_styles(theme_id: str, brand: str, policy: str | None = None) -> dict:
+    """Theme CSS, variables and contrast handling. ``policy='aa'`` (design v2) applies the aa
+    rules even to classic; v1 calls never pass it, so classic v1 stays legacy."""
     theme = load_theme(theme_id)
     if not re.fullmatch(COLOR, brand):
         raise ValueError('invalid brand color')
@@ -162,7 +164,7 @@ def theme_styles(theme_id: str, brand: str) -> dict:
     adjustments=[]; reviews=[]; pairs=[]
     # Classic is the original fixed stylesheet and original main --brand attribute.
     # Never derive a replacement color or change its HTML, even for poor contrast.
-    if theme.contrast_policy=='legacy':
+    if theme.contrast_policy=='legacy' and policy!='aa':
         colors={'background':'#ffffff','alternate':'#f1f6f1','hero':'#e5eee7',
                 'text':'#172c2a','muted':'#465650','border':'#dce5de',
                 'brand':brand,'brand-text':brand,'brand-original':brand}
@@ -201,7 +203,7 @@ def theme_styles(theme_id: str, brand: str) -> dict:
     variables={k.replace('_','-'):str(v)+('px' if k in ('padding_y','padding_x','radius') else '') for k,v in tokens.items()}
     colors={k.replace('_','-'):v for k,v in tokens.items() if isinstance(v,str) and v.startswith('#')}
     colors.update({'brand':brand,'brand-original':brand,'brand-text':accent,'brand-background':brand})
-    if theme_id=='bold' or theme.fonts:
+    if theme_id=='bold' or theme.fonts or policy=='aa':
         colors['on-brand']=correct('on-brand','#ffffff',[brand])
     if theme.fonts:
         colors['dark-text'] = correct('dark-text', '#ffffff', ['#172421'])

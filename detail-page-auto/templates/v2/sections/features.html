@@ -1,0 +1,1 @@
+<h2>상품 특징</h2>{% for item in section["items"] %}<article class="feature{% if item.get('image') %} has-image{% endif %}">{% if item.get("image") %}<div class="media"><img src="{{ item.image }}" alt="{{ item.title }}"></div>{% endif %}<div class="text"><div class="num">{{ "%02d"|format(loop.index) }}</div><h3>{{ item.title }}</h3><p>{{ item.desc }}</p></div></article>{% endfor %}

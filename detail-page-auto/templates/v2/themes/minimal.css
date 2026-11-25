@@ -1,0 +1,3 @@
+.theme-minimal .pain,.theme-minimal .features,.theme-minimal .targets,.theme-minimal .cases{background:var(--alternate)}
+.theme-minimal .pain-list li{border:1px solid var(--border)}
+.theme-minimal .feature{border:1px solid var(--border)}

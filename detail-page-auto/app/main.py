@@ -25,7 +25,7 @@ STEPS=['① 상품 정보','② 프롬프트','③ 답변 붙여넣기','④ 검
 KINDS={'스펙':'spec','특징':'feature','사용법':'usage','주장':'claim','기타':'other'}
 ROLES={'대표':'hero','특징':'feature','해결':'solution','디테일':'detail','사용 장면':'lifestyle','구조도':'diagram','기타':'other'}
 REFERENCE_KINDS={'경쟁사':'competitor','고객 목소리':'customer_voice','기타':'other'}
-NAMES={'hero':'대표 문구','pain':'고객 고민','solution':'해결','features':'특징','how_to':'사용법','review':'후기','spec':'스펙','stats':'숫자 띠','targets':'추천 대상','structure':'구조와 구성','gallery':'상품 사진','image':'사용 장면','faq':'자주 묻는 질문','notice':'배송·교환·반품 안내'}
+NAMES={'cases':'적용 사례','hero':'대표 문구','pain':'고객 고민','solution':'해결','features':'특징','how_to':'사용법','review':'후기','spec':'스펙','stats':'숫자 띠','targets':'추천 대상','structure':'구조와 구성','gallery':'상품 사진','image':'사용 장면','faq':'자주 묻는 질문','notice':'배송·교환·반품 안내'}
 LABELS={'product':'상품 정보','name':'상품명','category':'카테고리','price':'가격','facts':'상품 사실','text':'문구','evidence':'근거','reviews':'후기','permission_confirmed':'사용 허가 확인','hero':'대표 문구','headline':'제목','subcopy':'보조 문구','images':'사진','claim':'주장','body':'본문','features':'특징','how_to':'사용법','faq':'질문·답변','sections':'섹션'}
 S=st.session_state
 
@@ -57,7 +57,7 @@ def form_load(data=None,image_root=None):
     revision=uuid.uuid4().hex[:8]
     S['form_buffer']=copy.deepcopy(data)
     S['rich_baseline'] = copy.deepcopy(data)
-    S['rich_input'] = {key:copy.deepcopy(data[key]) for key in ('highlights','targets','structure','spec_table') if key in data}
+    S['rich_input'] = {key:copy.deepcopy(data[key]) for key in ('highlights','targets','structure','spec_table','use_cases','target_industries','target_uses') if key in data}
     S['rich_revision'] = revision
     S['verified_table_digest'] = json.dumps(data.get('spec_table'),ensure_ascii=False,sort_keys=True)
     S['fact_rows']=[dict(row,_uid=revision+'-'+str(i)) for i,row in enumerate(data['facts'])]
@@ -80,6 +80,8 @@ def open_job(path):
     S['job']=str(job); S['bundle']=''; S['last_error']=''
     manifest=read_json(job/'manifest.json')
     S['theme_choice']=manifest.get('theme','classic')
+    from core.render import job_design_version
+    S['design_choice']=job_design_version(manifest)
     S['preview_brand']=effective_brand(manifest,data['product']['brand_color'])
     bundle=resume_bundle(job)
     S['bundle']=str(bundle) if bundle else ''
@@ -326,6 +328,16 @@ def rich_inputs():
         targets = table('targets', {'name':'장소 또는 대상'}, [{'name':value} for value in baseline.get('targets', [])])
         rich['targets'] = [row['name'] for row in targets]
         field_error('targets')
+        st.markdown('**추천 업종 · 용도 (선택, 각 최대 12개)** — 입력하면 디자인 v2에서 업종과 용도를 나눠 보여 줍니다.')
+        industries = table('target_industries', {'name':'업종'}, [{'name':value} for value in baseline.get('target_industries') or []])
+        uses = table('target_uses', {'name':'용도'}, [{'name':value} for value in baseline.get('target_uses') or []])
+        if industries: rich['target_industries'] = [row['name'] for row in industries]
+        if uses: rich['target_uses'] = [row['name'] for row in uses]
+        field_error('target_industries'); field_error('target_uses')
+        st.markdown('**적용 사례 (선택, 최대 6개)** — 서로 다른 시공·사용 사례. 순서대로 하는 작업 단계가 아닙니다.')
+        cases = table('use_cases', {'name':'사례 이름','desc':'설명'}, baseline.get('use_cases') or [])
+        if cases: rich['use_cases'] = cases
+        field_error('use_cases')
         st.markdown('**구조와 구성 · 최대 8개**')
         rich['structure'] = table('structure', {'name':'구성 이름','desc':'설명'}, baseline.get('structure', []))
         field_error('structure')
@@ -370,7 +382,7 @@ def input_page():
     st.markdown('### 기본 정보')
     st.text_input('상품명',key='product_name'); field_error('product.name')
     st.text_input('카테고리',key='product_category'); field_error('product.category')
-    st.text_input('가격 (표시용)',key='product_price'); field_error('product.price')
+    st.text_input('가격 (표시용)',key='product_price',help='비우면 상세페이지에 가격 칸이 나오지 않습니다. "판매하지 않음"처럼 적은 판매 상태는 그대로 표시합니다.'); field_error('product.price')
     st.color_picker('브랜드 색상',key='product_brand_color')
     color_candidates_input()
     st.subheader('상품 사실')
@@ -482,7 +494,8 @@ def input_page():
         def create():
             facts=ProductFacts.model_validate(data)
             if not S['image_root']: raise ValueError('상품 사진을 업로드해 주세요.')
-            return create_job(facts,Path(S['image_root'] or '.'),outputs())
+            from core.render import DEFAULT_DESIGN_VERSION
+            return create_job(facts,Path(S['image_root'] or '.'),outputs(),design_version=DEFAULT_DESIGN_VERSION)
         ok,job=perform('상품 사실 저장',create)
         if ok: schedule_open(job,1)
         else: st.rerun()
@@ -741,11 +754,17 @@ def preview_page(job):
     if 'preview_brand' not in S:
         S['preview_brand'] = current_brand
     if 'theme_choice' not in S: S['theme_choice']=current_theme
+    from core.render import job_design_version
+    current_version=job_design_version(manifest)
+    if S.get('design_choice') not in (1,2): S['design_choice']=current_version
+    version=st.radio('디자인 버전',[2,1],key='design_choice',horizontal=True,
+                     format_func=lambda v:'v2 · 새 디자인' if v==2 else 'v1 · 이전 디자인',
+                     help='기존 작업은 만들 때의 v1을 그대로 씁니다. 바꾸면 미리보기를 다시 만들고 승인도 다시 받아야 합니다.')
     selected=st.selectbox('디자인 테마',THEME_IDS,key='theme_choice')
     color_candidates_job(job)
     brand = st.color_picker('미리보기 브랜드 색', key='preview_brand')
-    if selected != current_theme or brand.lower() != current_brand.lower():
-        ok,bundle=perform('디자인 미리보기 렌더링',lambda:preview_job(job,theme=selected,brand_color=brand))
+    if selected != current_theme or brand.lower() != current_brand.lower() or version != current_version:
+        ok,bundle=perform('디자인 미리보기 렌더링',lambda:preview_job(job,theme=selected,brand_color=brand,design_version=version))
         if ok:
             S['bundle']=str(bundle)
             for key in list(S):
