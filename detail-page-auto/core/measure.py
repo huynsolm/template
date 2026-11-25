@@ -44,7 +44,7 @@ MEASURE_JS = r'''spec => {
         if (!text) return;
         const style = getComputedStyle(element);
         out.push({section_id: section.dataset.section, section_type: kind,
-                  field_path: template.replace('{i}', String(i)), role,
+                  field_path: template.replace('{i}', String(i)).replace('{n}', (element.closest('[data-index]') || {dataset: {index: String(i)}}).dataset.index), role,
                   lines: lineCount(element), chars: [...text].length,
                   font_size: parseFloat(style.fontSize), text,
                   align: section.classList.contains('copy-align-center') ? 'center'

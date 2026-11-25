@@ -44,6 +44,12 @@ def job_design_version(manifest: dict) -> int:
     return manifest.get('design_version', 1)
 
 
+def job_theme_styles(theme_id: str, brand: str, design_version: int) -> dict:
+    """Theme styles under the contrast policy of the design version (v2: aa for every theme)."""
+    from .themes import theme_styles
+    return theme_styles(theme_id, brand, policy='aa' if design_version == 2 else None)
+
+
 def expected_contrast_policy(theme_id: str, design_version: int) -> str:
     """Design v2 uses the aa policy for every theme; v1 keeps each theme's own (classic: legacy)."""
     from .themes import load_theme
@@ -236,10 +242,12 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         env = Environment(loader=FileSystemLoader(ROOT / 'templates'), autoescape=select_autoescape(['html']), undefined=StrictUndefined)
         from .themes import ALIGNABLE
         if v2:
-            for section in data['sections']:
+            import copy
+            view = copy.deepcopy(data)  # template-only fields never reach input.json
+            for section in view['sections']:
                 if section['type'] == 'spec' and section.get('spec_table'):
                     section['split'] = split_spec_table(section['spec_table'])
-            (job / 'page.html').write_text(env.get_template('v2/page.html').render(**data, theme=theme, theme_variables=variables, fonts=list(fonts.values()), alignable=ALIGNABLE, labels=V2_LABELS), encoding='utf-8')
+            (job / 'page.html').write_text(env.get_template('v2/page.html').render(**view, theme=theme, theme_variables=variables, fonts=list(fonts.values()), alignable=ALIGNABLE, labels=V2_LABELS), encoding='utf-8')
         else:
             (job / 'page.html').write_text(env.get_template('page.html').render(**data, theme_variables=variables, contrast_policy=styles['contrast_policy'], fonts=fonts.values(), variants=design.variants, align=design.align, alignable=ALIGNABLE), encoding='utf-8')
         if design.variants or v2:

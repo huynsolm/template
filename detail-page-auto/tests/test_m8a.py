@@ -68,7 +68,7 @@ def test_rule_helpers():
     assert target_chars(90, 3, 2) == 60
     assert target_chars(10, 0, 1) == 10
     assert [subject(w) for w in ('보조 설명', '서브 카피', 'FAQ 답변', '헤드 카피')] == ['보조 설명이', '서브 카피가', 'FAQ 답변이', '헤드 카피가']
-    assert LINE_LIMITS == {'hero_head': 2, 'head': 1, 'sub': 1, 'support': 2, 'item': 1, 'faq_answer': 3}
+    assert LINE_LIMITS == {'hero_head': 2, 'head': 1, 'sub': 1, 'support': 2, 'item': 1, 'faq_answer': 3, 'note': 1}  # note: M9 key-spec note
     b = budgets()
     assert b['section_head'].chars < b['support'].chars and b['support'].lines == 2
 

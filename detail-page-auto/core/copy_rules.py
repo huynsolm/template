@@ -14,10 +14,11 @@ LINE_LIMITS = {
     'support': 2,
     'item': 1,
     'faq_answer': 3,  # FAQ 답변 예외
+    'note': 1,        # 숫자 띠 값 끝의 괄호 설명 (디자인 v2에서 둘째 줄)
 }
 ROLE_NAMES = {
     'hero_head': '대표 제목', 'head': '헤드 카피', 'sub': '서브 카피', 'support': '보조 설명',
-    'item': '목록 항목', 'faq_answer': 'FAQ 답변',
+    'item': '목록 항목', 'faq_answer': 'FAQ 답변', 'note': '숫자 띠 괄호 설명',
 }
 
 # Elements measured inside each section type. (selector, path template, role, data getter)
@@ -30,7 +31,7 @@ MEASURE_SPEC = {
     'features': [('h3', 'items.{i}.title', 'head'), ('h3 + p', 'items.{i}.desc', 'support')],
     'how_to': [('li h3', 'steps.{i}.title', 'head'), ('li h3 + p', 'steps.{i}.desc', 'support')],
     'faq': [('h3', 'items.{i}.q', 'head'), ('h3 + p', 'items.{i}.a', 'faq_answer')],
-    'stats': [('dt', 'items.{i}.label', 'item'), ('dd', 'items.{i}.value', 'item')],
+    'stats': [('dt', 'items.{i}.label', 'item'), ('dd', 'items.{i}.value', 'item'), ('.note', 'items.{n}.value', 'note')],
     'targets': [('li', 'items.{i}', 'item')],
     'structure': [('dt', 'items.{i}.name', 'item'), ('dd', 'items.{i}.desc', 'item')],
     'cases': [('h3', 'items.{i}.name', 'head'), ('h3 + p', 'items.{i}.desc', 'support')],
@@ -62,7 +63,7 @@ def budgets(type_scale: dict | None = None, width_px: float = 740.0) -> dict[str
     scale = {'hero_head': 66, 'head': 46, 'item_head': 31, 'sub': 26, 'body': 24}
     scale.update(type_scale or {})
     size = {'hero_head': scale['hero_head'], 'head': scale['item_head'], 'sub': scale['sub'],
-            'support': scale['body'], 'item': scale['body'], 'faq_answer': scale['body']}
+            'support': scale['body'], 'item': scale['body'], 'faq_answer': scale['body'], 'note': scale['body']}
     result = {role: Budget(role, LINE_LIMITS[role], LINE_LIMITS[role] * chars_per_line(size[role], width_px))
               for role in LINE_LIMITS}
     # Section titles (h2) are larger than item titles; give them their own budget.

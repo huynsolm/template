@@ -149,7 +149,8 @@ def reassess_draft(job: Path, document: Document | None = None, evidence=None) -
     review+=reference_reviews(facts,document)
     review+=repetition_reviews(document)
     manifest=read_json(job/'manifest.json')
-    styles=theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))
+    from .render import job_theme_styles, job_design_version
+    styles=job_theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color),job_design_version(manifest))
     # An accepted job keeps its per-image confirmations; its images cannot change inside the job.
     confirmed={f"images.{check['index']}" for check in manifest.get('image_checks',[])}
     images=[item for item in manifest.get('image_reviews',[])
@@ -207,7 +208,8 @@ def save_draft(job: Path, data: dict, locked_sections: list[str], evidence=None)
     write_json(job/'edits.json',{'locked_sections':locked_sections})
     write_json(job/'review.json',review)
     manifest=read_json(job/'manifest.json')
-    manifest.update(contrast_metadata(theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color))))
+    from .render import job_theme_styles, job_design_version
+    manifest.update(contrast_metadata(job_theme_styles(manifest.get('theme','classic'),effective_brand(manifest,document.product.brand_color),job_design_version(manifest))))
     manifest.update(updated_at=now(),needs_review=bool(review),review_accepted=False)
     write_json(job/'manifest.json',manifest)
     # The preview no longer matches the saved text. measured.json keeps pointing at it, so ④ can

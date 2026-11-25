@@ -14,7 +14,7 @@ from .schema import Document, Model, Text
 from .prompting import make_prompt, make_fix_prompt, prompt_version, data_block
 from .ingest import extract_json
 from .assemble import assemble, DEFAULT_TERMS
-from .render import render, job_design_version, DESIGN_VERSIONS
+from .render import render, job_design_version, job_theme_styles, DESIGN_VERSIONS
 from .palette import color_args
 
 
@@ -69,7 +69,7 @@ def create_job(facts: ProductFacts, images: Path, output: Path, max_attempts=5, 
         raise ValueError('design_version must be 1 or 2')
     from .themes import theme_styles, contrast_metadata
     brand = brand_color if brand_color is not None else facts.product.brand_color
-    styles=theme_styles(theme,brand)
+    styles=job_theme_styles(theme,brand,design_version)
     paths=facts.validate_images(images)
     from .image_checks import check_distinct_files
     check_distinct_files(facts,paths)
@@ -124,7 +124,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
     if accept_review and any(image.source for image in facts.images):
         raise ValueError('AI로 만든 이미지가 있는 작업은 --accept-review로 승인할 수 없습니다. 화면 ⑥ 또는 accept --confirm-image로 이미지마다 확인하세요.')
     brand = brand_color if brand_color is not None else effective_brand(manifest, facts.product.brand_color)
-    styles=theme_styles(theme,brand)
+    styles=job_theme_styles(theme,brand,job_design_version(manifest))
     terms=tuple(manifest.get('review_terms',DEFAULT_TERMS)) if terms is None else tuple(terms)
     attempt=manifest['attempts']+1
     (job/'attempts'/f'answer-{attempt}.txt').write_text(answer,encoding='utf-8')
@@ -203,7 +203,7 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
     from .themes import theme_styles, contrast_metadata
     theme=theme if theme is not None else original_manifest.get('theme','classic')
     brand = brand_color if brand_color is not None else effective_brand(original_manifest, document.product.brand_color)
-    styles=theme_styles(theme,brand)
+    styles=job_theme_styles(theme,brand,job_design_version(original_manifest))
     review=[item for item in review if item.get('section_id')!='theme']+styles['contrast_reviews']
     if not isinstance(review,list) or not all(isinstance(item,dict) for item in review):
         raise ValueError('review.json must be an array of review items')
@@ -304,6 +304,10 @@ def regenerate_job(previous: Path, locked_sections: list[str] | None = None):
                      locked=locked,locked_review=review,theme=previous_manifest.get('theme','classic'),
                      brand_color=effective_brand(previous_manifest,facts.product.brand_color),
                      design_version=job_design_version(previous_manifest))
+    colour_settings={k:previous_manifest[k] for k in ('color_mode','secondary_color') if previous_manifest.get(k)}
+    if colour_settings:
+        child_manifest_path=child/'manifest.json'
+        write_json(child_manifest_path,{**read_json(child_manifest_path),**colour_settings})
     try:
         child_manifest=read_json(child/'manifest.json')
         child_manifest['review_terms']=read_json(previous/'manifest.json').get('review_terms',list(DEFAULT_TERMS))

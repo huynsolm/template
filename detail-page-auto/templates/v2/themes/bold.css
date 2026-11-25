@@ -1,5 +1,5 @@
 .theme-bold .hero .copy{order:-1;background:var(--hero-band-bg,var(--text));color:var(--on-hero-band,var(--background));padding:64px 56px 48px}
-.theme-bold .hero .eyebrow,.theme-bold .hero .sub,.theme-bold .hero h1{color:var(--on-hero-band,var(--background))}
+.theme-bold .hero .eyebrow,.theme-bold .hero .sub,.theme-bold .hero h1,.theme-bold .hero .price{color:var(--on-hero-band,var(--background))}
 .theme-bold .hero .price{border-color:var(--on-hero-band,var(--background))}
 .theme-bold .stats{background:var(--stats-band-bg,var(--brand));color:var(--on-stats-band,var(--on-brand));padding:16px 56px 56px}
 .theme-bold .keyspec{border-top-color:var(--on-stats-band,var(--on-brand))}

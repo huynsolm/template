@@ -113,6 +113,13 @@ class Targets(Section):
     items: list[Title] = Field(min_length=1, max_length=36)
     groups: list[TargetGroup] | None = None  # M9: industries / uses, shown apart in design v2
 
+    @model_validator(mode='after')
+    def groups_match_items(self):
+        # Two views of the same list: v1 shows items, v2 shows groups. Nothing may differ.
+        if self.groups is not None and [item for group in self.groups for item in group.items] != self.items:
+            raise ValueError('추천 대상: items와 groups의 항목이 같아야 합니다(groups를 차례로 이은 목록 = items).')
+        return self
+
 class CaseItem(Model):
     name: Title
     desc: Short

@@ -159,6 +159,13 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
 - 데이터: `Product.price` 선택(공백 → None), `ProductFacts.use_cases`/`target_industries`/`target_uses`(None 기본), 새 판매자 섹션 `cases`(사용 방법 다음), `Targets.groups`. v1 템플릿은 가격이 있을 때만 `.price`, `sections/cases.html` 추가. readiness `EMPTY_PRICE`는 권장.
 - PDF 글자 추출을 막는 표현(`font-variant-numeric: tabular-nums`, `opacity`)은 v2 CSS에 쓰지 않는다.
 - 색 방식(사용자 결정 2026-11-25): `core/palette.py`. `THEME_DEFAULT_MODE`(tone: classic·minimal·natural·industrial, duo: bold·modern·impact), `solid` 선택 가능. 보조색 자동 계산(`secondary_colors`) 또는 작업 manifest `secondary_color`(고급). 작업 manifest `color_mode`(없으면 테마 기본). 그라데이션은 CSS 변수 `--key-bg`(해결), `--hero-panel-bg`(사진 뒤, 글자 없음), `--hero-band-bg`(bold·impact 제목 띠), `--stats-band-bg`(bold)만. 대비는 `lowest_contrast`(21곳 표본), 미달 시 `_fit`이 글자색 → 그라데이션 명도 순으로 조정. 결과 manifest `color_scheme`. `preview_job(color_mode=, secondary_color=)`, `bundle_matches`는 `palette.color_matches`로 비교. 테스트 `tests/test_m9_colors.py`.
+- 검수(`M9_REVIEW.md`, 재작업 필요 · Important 6) 반영, 회귀 테스트 `tests/test_m9_review.py`, 재검수 요청 `CODEX_REVIEW_M9_FIX.md`:
+  - 그라데이션 띠 위 모든 글자(라벨·판매 상태 포함)가 검사한 글자색을 쓴다. 테스트는 실제 DOM 글자색을 manifest 그라데이션과 대조.
+  - `regenerate_job`(초과 문구 재생성 포함)이 `color_mode`·`secondary_color`를 자식 작업에 넘긴다.
+  - `render.job_theme_styles(theme, brand, version)`: 생성·수집·편집·승인 모두 버전별 대비 정책(v2 classic = aa, 경고 없음; v1 classic = legacy 경고 유지).
+  - 숫자 띠 괄호 설명은 역할 `note`(1줄)로 `items.N.value`에 측정(`{n}` = `data-index`), 섹션 합계에 포함.
+  - v2 템플릿용 가공 데이터(`split`)는 사본에만 넣어 `input.json`은 공개 스키마 그대로.
+  - `Targets.groups`가 있으면 groups를 이은 목록이 items와 같아야 한다(스키마 검증).
 - 테스트 `tests/test_m9.py`. 기존 테스트 변경: readiness(가격 권장), app 테마 변경 테스트는 v1 classic 정책 확인용이라 v1 고정. 캡처 `--m9-only`. 검수 요청 `CODEX_REVIEW_M9.md`.
 
 ## 제품과 현재 흐름
