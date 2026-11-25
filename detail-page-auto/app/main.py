@@ -82,6 +82,9 @@ def open_job(path):
     S['theme_choice']=manifest.get('theme','classic')
     from core.render import job_design_version
     S['design_choice']=job_design_version(manifest)
+    S['color_choice']=manifest.get('color_mode') or 'default'
+    S['secondary_manual']=bool(manifest.get('secondary_color'))
+    S.pop('secondary_pick',None)
     S['preview_brand']=effective_brand(manifest,data['product']['brand_color'])
     bundle=resume_bundle(job)
     S['bundle']=str(bundle) if bundle else ''
@@ -693,6 +696,12 @@ def display_bundle(bundle):
     if manifest.get('needs_review'):
         if manifest.get('review_accepted'): st.info('승인 완료 · 검수 기록은 review.json에 보존됩니다.')
         else: st.error('검수 필요: 근거·수치·광고 표현을 확인해 주세요.')
+    if manifest.get('color_scheme'):
+        from core.palette import MODE_NAMES
+        scheme=manifest['color_scheme']
+        lowest=min((c['lowest_contrast'] for c in scheme['contrast_checks']),default=None)
+        st.caption(f"색 방식: {MODE_NAMES[scheme['mode']]} · 보조색 {'직접 지정' if scheme['secondary_source']=='manual' else '자동'}"
+                   + (f" · 글자 대비 최저 {lowest}:1" if lowest else '') + (' · 대비 맞춤 조정함' if scheme['contrast_adjustments'] else ''))
     from core.image_checks import SOURCE_NAMES
     ai=[item for item in manifest.get('image_sources',[]) if item['source']!='photo']
     confirmed={check['index'] for check in manifest.get('image_checks',[])}
@@ -763,8 +772,24 @@ def preview_page(job):
     selected=st.selectbox('디자인 테마',THEME_IDS,key='theme_choice')
     color_candidates_job(job)
     brand = st.color_picker('미리보기 브랜드 색', key='preview_brand')
-    if selected != current_theme or brand.lower() != current_brand.lower() or version != current_version:
-        ok,bundle=perform('디자인 미리보기 렌더링',lambda:preview_job(job,theme=selected,brand_color=brand,design_version=version))
+    wanted_mode, wanted_secondary = manifest.get('color_mode'), manifest.get('secondary_color')
+    if version == 2:
+        from core.palette import MODE_NAMES, THEME_DEFAULT_MODE, secondary_colors
+        options = ['default', 'tone', 'duo', 'solid']
+        if S.get('color_choice') not in options: S['color_choice'] = 'default'
+        choice = st.radio('색 방식', options, key='color_choice', horizontal=True,
+                          format_func=lambda m: f"테마 기본 ({MODE_NAMES[THEME_DEFAULT_MODE[selected]]})" if m == 'default' else MODE_NAMES[m],
+                          help='그라데이션은 첫 화면과 핵심 메시지에만 씁니다. 표·긴 본문·구매 안내는 단색이고 사진 색은 바꾸지 않습니다.')
+        wanted_mode = None if choice == 'default' else choice
+        with st.expander('고급: 보조색 직접 지정'):
+            manual = st.checkbox('보조색을 직접 고르기 (끄면 브랜드 색에서 자동 계산)', key='secondary_manual')
+            if 'secondary_pick' not in S:
+                S['secondary_pick'] = manifest.get('secondary_color') or secondary_colors(brand)['partner']
+            pick = st.color_picker('보조색', key='secondary_pick', disabled=not manual)
+            wanted_secondary = pick.lower() if manual else None
+    if (selected != current_theme or brand.lower() != current_brand.lower() or version != current_version
+            or wanted_mode != manifest.get('color_mode') or wanted_secondary != manifest.get('secondary_color')):
+        ok,bundle=perform('디자인 미리보기 렌더링',lambda:preview_job(job,theme=selected,brand_color=brand,design_version=version,color_mode=wanted_mode,secondary_color=wanted_secondary))
         if ok:
             S['bundle']=str(bundle)
             for key in list(S):

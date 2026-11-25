@@ -15,6 +15,7 @@ from .prompting import make_prompt, make_fix_prompt, prompt_version, data_block
 from .ingest import extract_json
 from .assemble import assemble, DEFAULT_TERMS
 from .render import render, job_design_version, DESIGN_VERSIONS
+from .palette import color_args
 
 
 def now():
@@ -154,7 +155,7 @@ def ingest_job(job: Path, answer: str, source_label='', render_output=False, ter
         if render_output:
             if needs_review:
                 print('\n'+'!'*72+'\nWARNING: 검수 필요 — '+str(len(review))+'개 항목. '+str(job/'review.json')+' 확인 필수.\n'+('명시적 --accept-review 승인으로 일반 파일명을 사용합니다.' if accept_review else '미승인 초안: .DRAFT 파일명으로 저장합니다. 검수 후 cli.py accept --job '+str(job)+' 로 승인하세요.')+'\n'+'!'*72+'\n',file=sys.stderr)
-            rendered_bundle=render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme,brand_color=brand,design_version=job_design_version(manifest))
+            rendered_bundle=render(document,job,stage/'rendered',png=True,needs_review=needs_review,accept_review=accept_review,theme=theme,brand_color=brand,design_version=job_design_version(manifest),**color_args(manifest))
             copy_review=read_json(rendered_bundle/'manifest.json').get('copy_reviews',[])
             if copy_review:
                 review+=copy_review
@@ -231,7 +232,7 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
                 shutil.copyfile(source/name,staging/name)
         rendered=render(document,staging,staging/'rendered',png=True,
                         needs_review=bool(review),accept_review=True,theme=theme,brand_color=brand,
-                        design_version=job_design_version(original_manifest))
+                        design_version=job_design_version(original_manifest),**color_args(original_manifest))
         copy_review=read_json(rendered/'manifest.json').get('copy_reviews',[])
         if copy_review:
             review=review+copy_review
@@ -252,6 +253,7 @@ def accept_job(source: Path, theme=None, brand_color=None, claim_confirmations=N
             'image_checks':image_checks,
             'image_sources':sources,
             **({'design_version':job_design_version(original_manifest)} if job_design_version(original_manifest)!=1 else {}),
+            **{k:original_manifest[k] for k in ('color_mode','secondary_color') if original_manifest.get(k)},
             'claim_terms':original_manifest.get('claim_terms',list(dict.fromkeys([*DEFAULT_CLAIM_TERMS,*original_manifest.get('review_terms',[])]))),
             'method':'accept','attempts':0,'max_attempts':original_manifest.get('max_attempts',5),
             'review_terms':original_manifest.get('review_terms',list(DEFAULT_TERMS)),

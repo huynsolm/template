@@ -392,6 +392,7 @@ def _approval_is_current(job: Path, accepted: Path, manifest: dict) -> bool:
         from .render import expected_contrast_policy, job_design_version
         return (manifest.get('theme', 'classic') == source.get('theme', 'classic')
                 and job_design_version(manifest) == job_design_version(source)
+                and all(manifest.get(k) == source.get(k) for k in ('color_mode', 'secondary_color'))
                 and manifest.get('contrast_policy') == expected_contrast_policy(source.get('theme', 'classic'), job_design_version(source)))
     except (OSError, ValueError, KeyError):
         return False

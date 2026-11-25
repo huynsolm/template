@@ -173,7 +173,7 @@ def capture(html: Path, max_height: int = 4000, families=('DetailKorean',), *, t
         raise ValueError(f'Chromium asset loading/rendering failed: {exc}') from exc
 
 
-def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic", brand_color: str | None = None, thumbnail: bool = False, design_version: int = 1) -> Path | bytes:
+def render(document: Document, image_dir: Path, output_dir: Path, max_height: int = 4000, png: bool = False, *, needs_review: bool = False, accept_review: bool = False, force_draft: bool = False, theme: str = "classic", brand_color: str | None = None, thumbnail: bool = False, design_version: int = 1, color_mode: str | None = None, secondary_color: str | None = None) -> Path | bytes:
     if type(max_height) is not int or not 1 <= max_height <= 30000:
         raise ValueError('max_height must be an integer in 1..30000')
     if design_version not in DESIGN_VERSIONS:
@@ -202,8 +202,12 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
         assets.mkdir()
         css = styles['css']
         variables = styles['variables']
+        scheme = None
         if v2:
             css, variables = v2_styles(theme, design, variables, bool(fonts))
+            from .palette import color_scheme
+            scheme = color_scheme(theme, brand, styles['resolved_colors'], color_mode, secondary_color)
+            variables += '; ' + scheme['variables']
         if fonts:
             (assets / 'fonts').mkdir()
             for font in fonts.values():
@@ -287,6 +291,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                     'copy_metrics': metrics, 'copy_reviews': reviews_copy,
                     'copy_rules_enforced': enforce_copy_rules, 'copy_measure_version': MEASURE_VERSION,
                     'design_version': design_version,
+                    **({'color_scheme': scheme['record']} if scheme else {}),
                     **({'image_sources': provenance['sources']} if provenance['sources'] is not None else {}),
                     **({'ai_images': True, 'image_sources_known': provenance['sources'] is not None} if provenance['ai'] else {}),
                     **({'image_checks': provenance['checks']} if provenance['checks'] else {}),

@@ -158,6 +158,7 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
 - 작업 흐름: `create_job(design_version=)`(v1이면 manifest에 키를 쓰지 않음), ingest·accept·regenerate·preview가 작업의 버전을 따름. `preview_job(design_version=)`으로 바꾸면 승인 해제. `bundle_matches`·일괄 승인 판정이 버전과 버전별 대비 정책을 비교. 갤러리 썸네일 캐시 키에 버전 포함.
 - 데이터: `Product.price` 선택(공백 → None), `ProductFacts.use_cases`/`target_industries`/`target_uses`(None 기본), 새 판매자 섹션 `cases`(사용 방법 다음), `Targets.groups`. v1 템플릿은 가격이 있을 때만 `.price`, `sections/cases.html` 추가. readiness `EMPTY_PRICE`는 권장.
 - PDF 글자 추출을 막는 표현(`font-variant-numeric: tabular-nums`, `opacity`)은 v2 CSS에 쓰지 않는다.
+- 색 방식(사용자 결정 2026-11-25): `core/palette.py`. `THEME_DEFAULT_MODE`(tone: classic·minimal·natural·industrial, duo: bold·modern·impact), `solid` 선택 가능. 보조색 자동 계산(`secondary_colors`) 또는 작업 manifest `secondary_color`(고급). 작업 manifest `color_mode`(없으면 테마 기본). 그라데이션은 CSS 변수 `--key-bg`(해결), `--hero-panel-bg`(사진 뒤, 글자 없음), `--hero-band-bg`(bold·impact 제목 띠), `--stats-band-bg`(bold)만. 대비는 `lowest_contrast`(21곳 표본), 미달 시 `_fit`이 글자색 → 그라데이션 명도 순으로 조정. 결과 manifest `color_scheme`. `preview_job(color_mode=, secondary_color=)`, `bundle_matches`는 `palette.color_matches`로 비교. 테스트 `tests/test_m9_colors.py`.
 - 테스트 `tests/test_m9.py`. 기존 테스트 변경: readiness(가격 권장), app 테마 변경 테스트는 v1 classic 정책 확인용이라 v1 고정. 캡처 `--m9-only`. 검수 요청 `CODEX_REVIEW_M9.md`.
 
 ## 제품과 현재 흐름

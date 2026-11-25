@@ -12,7 +12,7 @@
 ```bash
 git fetch origin && git checkout ccr-f9c07036-vgvm5j && git pull --ff-only
 cd detail-page-auto
-.venv/bin/python -m pytest -q tests/test_m9.py
+.venv/bin/python -m pytest -q tests/test_m9.py tests/test_m9_colors.py
 .venv/bin/python -m pytest -q
 git status --porcelain=v1
 .venv/bin/python tools/make_screenshots.py --m9-only --images /tmp/m9-shots --output /tmp/m9-out
@@ -27,6 +27,8 @@ git status --porcelain=v1
 5. **입력 항목**: 가격 공백 → 생략, 판매 상태 유지. 업종·용도·적용 사례가 비면 기존과 같은 결과. ① 편집기·facts.json 왕복.
 6. **안전·기존 규칙**: AI 이미지 출처·연출 표시·이미지별 승인, `unsafe_allow_html` 미사용, 외부 요청 0, 테마 CSS 검증(외부 URL·주석 금지).
 7. **테스트 품질**: 실제 Chromium·AppTest, 건너뛰기 없음. 기존 테스트 변경 2건(readiness 가격 권장, app 테마 변경 테스트의 v1 고정)의 타당성.
+
+8. **색 방식**(추가 결정): 테마 기본(tone/duo)·단색 선택, 보조색 자동/직접, 그라데이션 적용 구간 제한(해결·첫 화면 띠·사진 뒤 배경), 글자 영역의 그라데이션 최저 대비(21곳 표본) ≥ 4.5와 조정·기록, 표·본문·구매 안내 단색, 사진 무변경, v1 무변경. `tests/test_m9_colors.py`.
 
 ## 4. 구현 측 결정 (동의/반대)
 1. 라이브러리 기본은 v1, 앱·CLI(`prompt`/`generate`)·일괄 작업의 새 작업만 v2(기존 호출·테스트 호환).

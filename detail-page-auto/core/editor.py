@@ -224,7 +224,11 @@ def snapshot_bundle(bundle: Path, draft_bytes: bytes, review: list[dict]) -> Non
     write_json(bundle/'manifest.json',manifest)
 
 
-def preview_job(job: Path, theme=None, brand_color=None, design_version=None) -> Path:
+KEEP = object()
+
+
+def preview_job(job: Path, theme=None, brand_color=None, design_version=None, color_mode=KEEP, secondary_color=KEEP) -> Path:
+    """``color_mode``/``secondary_color``: KEEP the job's setting, None for the theme default / automatic."""
     from .render import render
     job=Path(job)
     draft_bytes=(job/'draft.json').read_bytes()
@@ -237,17 +241,27 @@ def preview_job(job: Path, theme=None, brand_color=None, design_version=None) ->
     from .render import job_design_version
     previous_version=job_design_version(manifest)
     version=design_version if design_version is not None else previous_version
-    bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme,brand_color=brand,design_version=version)
+    from .palette import color_args, MODES
+    colors=color_args(manifest)
+    if color_mode is not KEEP:
+        if color_mode is not None and color_mode not in MODES: raise ValueError('color mode must be one of '+', '.join(MODES))
+        colors['color_mode']=color_mode
+    if secondary_color is not KEEP: colors['secondary_color']=secondary_color
+    previous_colors=color_args(manifest)
+    bundle=render(document,job,job/'rendered',png=True,needs_review=bool(review),force_draft=True,theme=theme,brand_color=brand,design_version=version,**colors)
     rendered=read_json(bundle/'manifest.json')
     review=[item for item in review if item.get('section_id')!='theme']+rendered['contrast_reviews']+rendered.get('copy_reviews',[])
     snapshot_bundle(bundle,draft_bytes,review)
     rendered=read_json(bundle/'manifest.json')
-    if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy'] or previous_version!=version:
+    if previous_brand.lower()!=brand.lower() or manifest.get('theme','classic')!=theme or manifest.get('contrast_policy')!=rendered['contrast_policy'] or previous_version!=version or previous_colors!=colors:
         manifest.update(review_accepted=False)
         manifest.pop('rendered_job',None)
     manifest.update(contrast_metadata(rendered))
     manifest.update(theme=theme,brand_color=brand,needs_review=bool(review))
     if version!=1 or 'design_version' in manifest: manifest['design_version']=version
+    for key,value in colors.items():
+        if value: manifest[key]=value
+        else: manifest.pop(key,None)
     write_json(job/'review.json',review)
     write_json(job/'manifest.json',manifest)
     write_json(job/'preview.json',{'bundle':str(bundle.relative_to(job))})
@@ -296,6 +310,9 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
             return False
         if job_design_version(snapshot)!=job_design_version(current):
             return False
+        if job_design_version(current)==2:
+            from .palette import color_matches
+            if not color_matches(snapshot,current): return False
         return (snapshot.get('draft_sha256')==digest
                 and snapshot.get('theme','classic')==current.get('theme','classic')
                 and snapshot.get('contrast_policy')==expected_contrast_policy(current.get('theme','classic'),job_design_version(current)))
@@ -346,7 +363,10 @@ def gallery_thumbnail(job: Path, theme: str) -> Path:
     digest.update(brand.lower().encode())
     from .render import job_design_version
     version = job_design_version(read_json(job/'manifest.json'))
-    if version != 1: digest.update(f'design-v{version}'.encode())
+    if version != 1:
+        from .palette import color_args
+        settings = color_args(read_json(job/'manifest.json'))
+        digest.update(f'design-v{version}-{settings}'.encode())
     for source in collect_images(document,job).values():
         with source.open('rb') as stream:
             digest.update(hashlib.file_digest(stream, 'sha256').digest())
@@ -354,7 +374,8 @@ def gallery_thumbnail(job: Path, theme: str) -> Path:
     cache.mkdir(exist_ok=True)
     target = cache/(digest.hexdigest()+'.png')
     if not target.is_file():
-        thumbnail = render(document,job,cache,theme=theme,brand_color=brand,thumbnail=True,design_version=version)
+        from .palette import color_args
+        thumbnail = render(document,job,cache,theme=theme,brand_color=brand,thumbnail=True,design_version=version,**color_args(read_json(job/'manifest.json')))
         with tempfile.NamedTemporaryFile(dir=cache, delete=False) as stream:
             temporary = Path(stream.name)
             try:

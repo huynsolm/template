@@ -1,4 +1,5 @@
-.theme-impact .hero .copy{order:-1;background:var(--alternate);padding:64px 56px 48px}
+.theme-impact .hero .copy{order:-1;background:var(--hero-band-bg,var(--alternate));color:var(--on-hero-band,var(--text));padding:64px 56px 48px}
+.theme-impact .hero h1,.theme-impact .hero .sub{color:var(--on-hero-band,var(--text))}
 .theme-impact .hero h1{font-size:78px;line-height:1.15}
 .theme-impact .keyspec{border-top:4px solid var(--text)}
 .theme-impact h2{font-size:50px}
