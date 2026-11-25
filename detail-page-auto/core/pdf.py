@@ -41,7 +41,13 @@ TEXT_JS = r'''() => {
       const text = node.textContent.trim();
       if (!text) continue;
       const element = node.parentElement;
-      if (!element.checkVisibility({checkVisibilityCSS: true})) continue;
+      // display:contents makes no box of its own, so look at the nearest ancestor that does
+      // (it still reflects display:none and content-visibility of every ancestor). Whether the
+      // text itself is shown is its inherited visibility, which a child may set back to visible.
+      let box = element;
+      while (box && getComputedStyle(box).display === 'contents') box = box.parentElement;
+      if (!box || !box.checkVisibility()) continue;
+      if (getComputedStyle(element).visibility !== 'visible') continue;
       const range = document.createRange();
       range.selectNodeContents(node);
       const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);

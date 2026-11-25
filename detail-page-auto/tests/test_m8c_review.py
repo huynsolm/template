@@ -181,3 +181,46 @@ def test_a_missing_emoji_still_fails(tmp_path):
     inject(bundle, "const h = document.querySelector('h1'); h.textContent = h.textContent.replace('⭐', '');")
     with pytest.raises(ValueError, match='글자 보존 실패.*hero'):
         make_pdf(bundle)
+
+
+# --- re-review (M8_C_REVIEW_2.md) ---------------------------------------------------------------
+
+def test_visible_text_inside_display_contents_is_checked(tmp_path):
+    """R-C-1: a display:contents wrapper has no box, but its text is visible and must be in the PDF."""
+    bundle = render(document(headline='고유한 가시 문구', title='다른 위치 제목'), ROOT / 'samples', tmp_path, png=True, theme='modern')
+    html = bundle / 'page.html'
+    html.write_text(html.read_text(encoding='utf-8').replace('</body>', '''<script>
+const h = document.querySelector('h1'), s = document.createElement('span');
+s.style.display = 'contents'; s.textContent = h.textContent; h.replaceChildren(s);
+window.addEventListener('beforeprint', () => { h.style.visibility = 'hidden'; });
+</script></body>'''), encoding='utf-8')
+    with pytest.raises(ValueError, match='글자 보존 실패.*hero'):
+        make_pdf(bundle)
+    assert not list(bundle.glob('*.pdf'))
+
+
+def test_display_contents_text_present_passes_and_hidden_cases_still_skip(tmp_path):
+    bundle = render(document(headline='고유한 가시 문구', title='다른 위치 제목'), ROOT / 'samples', tmp_path, png=True, theme='modern')
+    html = bundle / 'page.html'
+    text = html.read_text(encoding='utf-8')
+    head = text.index('>', text.index('<section')) + 1
+    html.write_text(text[:head] + '<div style="display:none"><span style="display:contents">숨은내용하나</span></div>'
+                    '<div style="visibility:hidden;position:absolute"><span style="display:contents">숨은내용둘</span></div>'
+                    + text[head:].replace('</body>', '''<script>
+const h = document.querySelector('h1'), s = document.createElement('span');
+s.style.display = 'contents'; s.textContent = h.textContent; h.replaceChildren(s);
+</script></body>'''), encoding='utf-8')
+    make_pdf(bundle)
+    check = read_json(bundle / 'manifest.json')['pdf']['text_check']
+    assert check['missing'] == 0
+
+
+def test_opaque_rgba_photo_gives_the_same_candidates_as_rgb(tmp_path):
+    """R-I-1: an alpha channel that hides nothing does not switch off background removal."""
+    rgb = Image.new('RGB', (240, 240), '#1f5fbf')
+    ImageDraw.Draw(rgb).rectangle((70, 50, 170, 190), fill='#e8a317')
+    rgb.save(tmp_path / 'rgb.png')
+    rgb.convert('RGBA').save(tmp_path / 'rgba.png')
+    expected = suggest_colors([tmp_path / 'rgb.png'])
+    assert [c['color'] for c in expected] == ['#e8a317']
+    assert suggest_colors([tmp_path / 'rgba.png']) == expected

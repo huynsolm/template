@@ -146,6 +146,9 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - 색: 투명도가 있으면 불투명 픽셀만(RGBA 사전곱 축소), 배경 추정 안 함. `colors.VERSION='colors-2'`.
   - 판매처 프로필 ZIP에도 PDF 포함, 기록된 PDF 파일이 없으면 두 ZIP 모두 거부.
   - `docs/canva-check.md`는 `tools/make_screenshots.write_canva_check`가 샘플 PDF에서 쪽 수·크기를 읽어 만든다.
+- 재검수(`M8_C_REVIEW_2.md`) 반영, 재검수 요청 `CODEX_REVIEW_M8C_FIX2.md`:
+  - `TEXT_JS`: `display:contents` 부모는 가장 가까운 상자 있는 조상으로 `checkVisibility()`(표시 여부), 글자 자체는 부모의 계산된 `visibility`로 판단.
+  - 색: 알파 채널이 실제로 무언가를 가릴 때(최소 알파 < 255)만 전경 마스크, 모두 불투명하면 RGB처럼 가장자리 배경 제외. `colors-3`.
 
 ## 제품과 현재 흐름
 

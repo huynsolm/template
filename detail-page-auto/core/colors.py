@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-VERSION = 'colors-2'
+VERSION = 'colors-3'
 SAMPLE_EDGE = 240        # photos are reduced to this size before counting colours
 EDGE_BAND = 0.06         # share of width/height treated as background evidence
 BACKGROUND_DISTANCE = 48 # RGB distance within which a pixel counts as background
@@ -41,6 +41,10 @@ def _pixels(path: Path) -> list[tuple]:
     with Image.open(path) as image:
         image = ImageOps.exif_transpose(image)
         transparent = image.mode in ('RGBA', 'LA', 'PA') or 'transparency' in image.info
+        if transparent:
+            # Only an alpha channel that actually hides something is a foreground mask.
+            image = image.convert('RGBA')
+            transparent = image.getchannel('A').getextrema()[0] < 255
         image = image.convert('RGBA' if transparent else 'RGB')
         image.thumbnail((SAMPLE_EDGE, SAMPLE_EDGE), Image.Resampling.BOX)
     if transparent:
