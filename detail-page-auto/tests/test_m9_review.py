@@ -156,3 +156,45 @@ def test_targets_items_must_match_groups():
     good = dict(base, sections=base['sections'] + [{'id': 't', 'type': 'targets', 'items': ['새 업종', '기존 입력 대상'],
                                                     'groups': [{'name': '업종', 'items': ['새 업종']}, {'name': '대상', 'items': ['기존 입력 대상']}]}])
     Document.model_validate(good)
+
+
+# R-I-1 (M9_REVIEW_2.md): renders made under older rules are kept but never reused as current
+
+def _as_older_render(bundle: Path):
+    """What a render from before the fix looks like: no render revision, older measure/colour revisions."""
+    manifest = read_json(bundle / 'manifest.json')
+    manifest.pop('render_revision', None)
+    manifest['copy_measure_version'] = 'm8a-2'
+    manifest['color_scheme']['version'] = 'palette-1'
+    (bundle / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
+
+
+def test_older_v2_renders_are_not_reused_by_app_download_or_batch(tmp_path):
+    from core.batch import _accepted_for, _approval_is_current
+    from core.editor import bundle_matches, resume_bundle
+    from core.export import current_bundle
+    facts = ProductFacts.model_validate(read_json(ROOT / 'samples/facts-rich.json'))
+    job = create_job(facts, ROOT / 'samples', tmp_path, theme='impact', design_version=2)
+    ingest_job(job, ANSWER)
+    preview_job(job)
+    accepted = accept_job(job)
+    old_approval = accepted / read_json(accepted / 'manifest.json')['rendered_job']
+    assert resume_bundle(accepted) == old_approval and _approval_is_current(job, accepted, read_json(accepted / 'manifest.json'))
+    _as_older_render(old_approval)
+    assert not bundle_matches(accepted, old_approval) and resume_bundle(accepted) is None
+    with pytest.raises(ValueError):
+        current_bundle(accepted)
+    assert not _approval_is_current(job, accepted, read_json(accepted / 'manifest.json')) and _accepted_for(job) is None
+    fresh = preview_job(accepted)
+    assert resume_bundle(accepted) == fresh and current_bundle(accepted) == fresh
+    assert read_json(accepted / 'manifest.json')['review_accepted'] is False
+    assert old_approval.is_dir()  # the older result is kept, not deleted
+
+
+def test_v1_renders_are_unaffected_by_the_v2_revision(tmp_path):
+    from core.editor import bundle_matches
+    facts = ProductFacts.model_validate(read_json(ROOT / 'samples/facts-rich.json'))
+    job = create_job(facts, ROOT / 'samples', tmp_path, theme='classic')
+    ingest_job(job, ANSWER)
+    bundle = preview_job(job)
+    assert 'render_revision' not in read_json(bundle / 'manifest.json') and bundle_matches(job, bundle)

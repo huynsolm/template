@@ -166,6 +166,7 @@ M8-A(`CODEX_TASK_M8A.md`)는 새 테마 4종에만 적용한다. 기존 테마 3
   - 숫자 띠 괄호 설명은 역할 `note`(1줄)로 `items.N.value`에 측정(`{n}` = `data-index`), 섹션 합계에 포함.
   - v2 템플릿용 가공 데이터(`split`)는 사본에만 넣어 `input.json`은 공개 스키마 그대로.
   - `Targets.groups`가 있으면 groups를 이은 목록이 items와 같아야 한다(스키마 검증).
+- 재검수 2(`M9_REVIEW_2.md`) 반영: v2 결과에 `render_revision`(`render.V2_RENDER_REVISION`, 현재 `v2-r2`)을 기록하고 `render.snapshot_is_current`로 판정한다. `bundle_matches`(재개·미리보기·다운로드·내보내기)와 일괄 승인 조회(`batch._approval_is_current`, 승인 번들 manifest 확인)가 같은 판정을 쓴다. **v2 템플릿·CSS·측정·색 규칙을 바꾸면 이 값을 올린다.** 옛 결과는 지우지 않고 새 미리보기·재승인을 요구한다. v1은 영향 없음.
 - 테스트 `tests/test_m9.py`. 기존 테스트 변경: readiness(가격 권장), app 테마 변경 테스트는 v1 classic 정책 확인용이라 v1 고정. 캡처 `--m9-only`. 검수 요청 `CODEX_REVIEW_M9.md`.
 
 ## 제품과 현재 흐름

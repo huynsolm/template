@@ -389,7 +389,10 @@ def _approval_is_current(job: Path, accepted: Path, manifest: dict) -> bool:
         fallback = read_json(job/'draft.json')['product']['brand_color']
         if effective_brand(manifest, fallback).lower() != effective_brand(source, fallback).lower():
             return False
-        from .render import expected_contrast_policy, job_design_version
+        from .render import expected_contrast_policy, job_design_version, snapshot_is_current
+        # The approved render itself must follow today's rules for its design version.
+        if not snapshot_is_current(read_json(accepted / manifest['rendered_job'] / 'manifest.json')):
+            return False
         return (manifest.get('theme', 'classic') == source.get('theme', 'classic')
                 and job_design_version(manifest) == job_design_version(source)
                 and all(manifest.get(k) == source.get(k) for k in ('color_mode', 'secondary_color'))

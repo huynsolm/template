@@ -312,6 +312,9 @@ def bundle_matches(job: Path, bundle: Path) -> bool:
             return False
         if job_design_version(snapshot)!=job_design_version(current):
             return False
+        from .render import snapshot_is_current
+        if not snapshot_is_current(snapshot):
+            return False
         if job_design_version(current)==2:
             from .palette import color_matches
             if not color_matches(snapshot,current): return False

@@ -40,6 +40,19 @@ DESIGN_VERSIONS = (1, 2)
 DEFAULT_DESIGN_VERSION = 2
 
 
+# Raise whenever v2 templates, CSS, measurement or colour rules change what a v2 render shows or
+# checks. Older v2 renders are kept but are no longer reused as current previews or approvals.
+# r2: M9 review fixes (title-band text colours, key-spec note measurement, version-aware policy).
+V2_RENDER_REVISION = 'v2-r2'
+
+
+def snapshot_is_current(snapshot: dict) -> bool:
+    """Whether a render made earlier still follows today's rules for its design version."""
+    if job_design_version(snapshot) != 2:
+        return True
+    return snapshot.get('render_revision') == V2_RENDER_REVISION
+
+
 def job_design_version(manifest: dict) -> int:
     return manifest.get('design_version', 1)
 
@@ -299,6 +312,7 @@ def render(document: Document, image_dir: Path, output_dir: Path, max_height: in
                     'copy_metrics': metrics, 'copy_reviews': reviews_copy,
                     'copy_rules_enforced': enforce_copy_rules, 'copy_measure_version': MEASURE_VERSION,
                     'design_version': design_version,
+                    **({'render_revision': V2_RENDER_REVISION} if v2 else {}),
                     **({'color_scheme': scheme['record']} if scheme else {}),
                     **({'image_sources': provenance['sources']} if provenance['sources'] is not None else {}),
                     **({'ai_images': True, 'image_sources_known': provenance['sources'] is not None} if provenance['ai'] else {}),
