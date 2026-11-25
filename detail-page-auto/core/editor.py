@@ -371,7 +371,8 @@ def gallery_thumbnail(job: Path, theme: str) -> Path:
     if version != 1:
         from .palette import color_args
         settings = color_args(read_json(job/'manifest.json'))
-        digest.update(f'design-v{version}-{settings}'.encode())
+        from .render import V2_RENDER_REVISION
+        digest.update(f'design-v{version}-{settings}-{V2_RENDER_REVISION}'.encode())  # a rule change makes a new thumbnail
     for source in collect_images(document,job).values():
         with source.open('rb') as stream:
             digest.update(hashlib.file_digest(stream, 'sha256').digest())

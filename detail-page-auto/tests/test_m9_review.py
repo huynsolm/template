@@ -198,3 +198,23 @@ def test_v1_renders_are_unaffected_by_the_v2_revision(tmp_path):
     ingest_job(job, ANSWER)
     bundle = preview_job(job)
     assert 'render_revision' not in read_json(bundle / 'manifest.json') and bundle_matches(job, bundle)
+
+
+# R3-M-1 (M9_REVIEW_3.md): gallery thumbnails follow the v2 render revision; v1 keys are unchanged
+
+def test_gallery_thumbnail_follows_the_v2_render_revision(tmp_path, monkeypatch):
+    import core.render
+    from core.editor import gallery_thumbnail
+    facts = ProductFacts.model_validate(read_json(ROOT / 'samples/facts-rich.json'))
+    v2 = create_job(facts, ROOT / 'samples', tmp_path / 'v2', theme='impact', design_version=2)
+    ingest_job(v2, ANSWER)
+    first = gallery_thumbnail(v2, 'impact')
+    assert gallery_thumbnail(v2, 'impact') == first  # cached
+    monkeypatch.setattr(core.render, 'V2_RENDER_REVISION', 'v2-next')
+    second = gallery_thumbnail(v2, 'impact')
+    assert second != first and first.is_file() and second.is_file()
+    v1 = create_job(facts, ROOT / 'samples', tmp_path / 'v1', theme='classic')
+    ingest_job(v1, ANSWER)
+    before = gallery_thumbnail(v1, 'classic')
+    monkeypatch.setattr(core.render, 'V2_RENDER_REVISION', 'v2-other')
+    assert gallery_thumbnail(v1, 'classic') == before
